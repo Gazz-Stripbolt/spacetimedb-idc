@@ -21,7 +21,7 @@
 
   <!-- The idc library: one shared source file, compiled into this module. -->
   <ItemGroup>
-    <Compile Include="../idc-cs/Idc.cs" Link="Idc.cs" />
+    <Compile Include="../../../csharp/Idc.cs" Link="Idc.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('net10.'))">

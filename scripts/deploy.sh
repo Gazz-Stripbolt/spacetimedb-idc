@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
-# Publish `warehouse` and `shop` and point them at each other.
+# Publish the demo's `warehouse` and `shop` databases and point them at each other.
 #
-#   scripts/deploy.sh                 # local server, route transport, TypeScript shop
-#   IDC_TRANSPORT=reducer scripts/deploy.sh
-#   SHOP_MODULE=shop-rs scripts/deploy.sh   # shop-ts (default) | shop-rs | shop-cs
-#   WAREHOUSE_MODULE=warehouse-cs scripts/deploy.sh   # warehouse (Rust, default) | warehouse-cs
+#   scripts/deploy.sh                                   # Rust shop + Rust warehouse, route transport
+#   SHOP_LANG=typescript scripts/deploy.sh              # shop: rust | typescript | csharp
+#   WAREHOUSE_LANG=csharp scripts/deploy.sh             # warehouse: rust | csharp
+#   IDC_TRANSPORT=reducer scripts/deploy.sh             # route | reducer
 #   SERVER=maincloud HOST=https://maincloud.spacetimedb.com SHOP=my-shop WAREHOUSE=my-warehouse scripts/deploy.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SERVER=${SERVER:-local}
 HOST=${HOST:-http://127.0.0.1:3000}
-SHOP=${SHOP:-shop}
+SHOP=${SHOP:-shop}                    # database names
 WAREHOUSE=${WAREHOUSE:-warehouse}
-SHOP_MODULE=${SHOP_MODULE:-shop-ts}
-WAREHOUSE_MODULE=${WAREHOUSE_MODULE:-warehouse}
+SHOP_LANG=${SHOP_LANG:-rust}
+WAREHOUSE_LANG=${WAREHOUSE_LANG:-rust}
 export IDC_TRANSPORT=${IDC_TRANSPORT:-route}
+
+for dir in "demo/$SHOP_LANG/shop" "demo/$WAREHOUSE_LANG/warehouse"; do
+  [[ -d $dir ]] || { echo "no such module: $dir" >&2; exit 2; }
+done
 
 # One shared secret for the mesh. Keep it out of git.
 SECRET_FILE=.idc-secret
@@ -24,7 +28,10 @@ export IDC_SECRET=$(cat "$SECRET_FILE")
 publish() { # db module self peers
   IDC_SELF=$3 IDC_PEERS=$4 spacetime publish "$1" --module-path "$2" -s "$SERVER" -y "${@:5}"
 }
-publish "$WAREHOUSE" "$WAREHOUSE_MODULE" warehouse "shop=$HOST/v1/database/$SHOP" "$@"
-publish "$SHOP" "$SHOP_MODULE" shop "warehouse=$HOST/v1/database/$WAREHOUSE" "$@"
+publish "$WAREHOUSE" "demo/$WAREHOUSE_LANG/warehouse" warehouse "shop=$HOST/v1/database/$SHOP" "$@"
+publish "$SHOP" "demo/$SHOP_LANG/shop" shop "warehouse=$HOST/v1/database/$WAREHOUSE" "$@"
 echo
-echo "Dashboard: $HOST/v1/database/$WAREHOUSE/route/"
+echo "shop ($SHOP_LANG) ⇄ warehouse ($WAREHOUSE_LANG), transport: $IDC_TRANSPORT"
+[[ $WAREHOUSE_LANG == rust ]] && echo "Dashboard: $HOST/v1/database/$WAREHOUSE/route/"
+[[ $SHOP_LANG == rust ]] && echo "Dashboard: $HOST/v1/database/$SHOP/route/"
+true

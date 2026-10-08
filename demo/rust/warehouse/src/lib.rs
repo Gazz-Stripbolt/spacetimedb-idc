@@ -1,9 +1,9 @@
 //! **warehouse**: owns the stock. Reacts to `reserve` requests from the shop the
 //! moment they arrive, and pushes every stock change back to the shop.
 
-#[path = "../../idc/dashboard.rs"]
+#[path = "../../../dashboard/dashboard.rs"]
 mod dashboard;
-#[path = "../../idc/idc.rs"]
+#[path = "../../../../rust/idc.rs"]
 pub mod idc;
 
 use serde_json::{Value, json};

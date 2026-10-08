@@ -1,8 +1,8 @@
 /**
  * # spacetimedb-idc: inter-database communication, as a SpacetimeDB submodule
  *
- * The TypeScript twin of `idc/idc.rs`. Same wire protocol, so TypeScript and
- * Rust databases talk to each other.
+ * The TypeScript twin of `rust/idc.rs` and `csharp/Idc.cs`. Same wire protocol, so TypeScript,
+ * Rust and C# databases all talk to each other.
  *
  * - **Transactional outbox:** `send()` queues a message in your transaction; it
  *   exists if and only if your change commits.

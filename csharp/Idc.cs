@@ -1,6 +1,6 @@
 // Idc.cs: inter-database communication for SpacetimeDB C# modules.
 //
-// The C# twin of idc/idc.rs and the spacetimedb-idc TypeScript submodule. Same wire
+// The C# twin of rust/idc.rs and the spacetimedb-idc TypeScript submodule. Same wire
 // protocol (docs/PROTOCOL.md), so all three talk to each other.
 //
 // Drop this file into your module project and implement one method:

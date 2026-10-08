@@ -1,4 +1,4 @@
-// warehouse, in C#: same behaviour as the Rust warehouse, using idc-cs/Idc.cs.
+// warehouse, in C#: same behaviour as the Rust warehouse, using csharp/Idc.cs.
 
 #pragma warning disable STDB_UNSTABLE
 #nullable enable

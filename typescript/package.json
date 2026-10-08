@@ -9,7 +9,7 @@
   "exports": { ".": "./src/index.ts" },
   "files": ["src"],
   "keywords": ["spacetimedb", "submodule", "inter-database-communication", "outbox"],
-  "repository": { "type": "git", "url": "https://github.com/Gazz-Stripbolt/spacetimedb-idc", "directory": "idc-ts" },
+  "repository": { "type": "git", "url": "https://github.com/Gazz-Stripbolt/spacetimedb-idc", "directory": "typescript" },
   "dependencies": {
     "@noble/hashes": "^1.8.0"
   },

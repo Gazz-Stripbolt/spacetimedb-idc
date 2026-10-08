@@ -83,7 +83,7 @@ on both transports. That's six pairings, all in CI.
 
 ## The C# port
 
-`idc-cs/Idc.cs` is a drop-in partial `Module` class (C# submodules aren't supported yet). What it took:
+`csharp/Idc.cs` is a drop-in partial `Module` class (C# submodules aren't supported yet). What it took:
 
 - **No `System.Security.Cryptography` on wasi**, so the file carries a small managed SHA-256 / HMAC.
 - **System.Text.Json reflection is trimmed away.** `JsonNode` / `JsonObject` with primitive values work, but

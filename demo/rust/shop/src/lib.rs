@@ -2,9 +2,9 @@
 //! to the answer as soon as it arrives. It also keeps a live mirror of the
 //! warehouse's stock, fed by pushes rather than polling.
 
-#[path = "../../idc/dashboard.rs"]
+#[path = "../../../dashboard/dashboard.rs"]
 mod dashboard;
-#[path = "../../idc/idc.rs"]
+#[path = "../../../../rust/idc.rs"]
 pub mod idc;
 
 use serde_json::{Value, json};

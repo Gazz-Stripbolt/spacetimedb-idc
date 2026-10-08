@@ -1,6 +1,6 @@
 //! # idc.rs: inter-database communication for SpacetimeDB, today
 //!
-//! Drop this file into a module with `#[path = "../../idc/idc.rs"] pub mod idc;`
+//! Copy this file to your module's `src/idc.rs`, add `pub mod idc;` to `lib.rs`,
 //! and implement one function in the crate root:
 //!
 //! ```ignore

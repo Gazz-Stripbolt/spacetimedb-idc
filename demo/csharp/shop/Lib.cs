@@ -1,4 +1,4 @@
-// shop, in C#: same behaviour as shop-rs and shop-ts, using idc-cs/Idc.cs.
+// shop, in C#: same behaviour as the Rust and TypeScript shops, using csharp/Idc.cs.
 
 #pragma warning disable STDB_UNSTABLE
 #nullable enable
