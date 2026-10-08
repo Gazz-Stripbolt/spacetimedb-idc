@@ -54,6 +54,8 @@ public static partial class Module
     const long IdcLeaseUs = 60L * 1_000_000;
     const int IdcBatch = 64;
     const long IdcMaxBackoffMs = 60_000;
+    /// <summary>Pairing is cheap, so keep retrying it briskly while a peer comes up.</summary>
+    const long IdcMaxPairBackoffMs = 10_000;
     const ulong IdcLogKeep = 300;
     const long IdcSeenRetentionUs = 7L * 24 * 3600 * 1_000_000;
     const string IdcSignatureHeader = "x-idc-signature";
@@ -627,7 +629,7 @@ public static partial class Module
         if (pending)
         {
             var attempt = job.Attempt + 1;
-            var backoffUs = Math.Min(500L << (int)Math.Min(attempt, 7), IdcMaxBackoffMs) * 1000;
+            var backoffUs = Math.Min(500L << (int)Math.Min(attempt, 7), IdcMaxPairBackoffMs) * 1000;
             ctx.WithTx(tx =>
             {
                 tx.Db.IdcPairJob.Insert(new IdcPairJob
@@ -662,6 +664,11 @@ public static partial class Module
             foreach (var k in tx.Db.IdcKnownPeer.Name.Filter(from).ToList()) tx.Db.IdcKnownPeer.Identity.Delete(k.Identity);
             tx.Db.IdcKnownPeer.Insert(new IdcKnownPeer { Identity = identity, Name = from, PairedAt = tx.Timestamp });
             IdcWriteLog(new IdcTx(tx.Db, tx.Timestamp), "in", from, "pair", "reducer", "", "paired", $"{identity.ToString()[..16]} is {from}");
+            // A peer just introduced itself, so it's up: pair back right away if we haven't yet.
+            if (tx.Db.IdcPeerToken.Peer.Find(from) is null)
+            {
+                tx.Db.IdcPairJob.Insert(new IdcPairJob { ScheduledAt = new ScheduleAt.Time(tx.Timestamp), Attempt = 0 });
+            }
             return 0;
         });
         return IdcJson(200, new JsonObject { ["ok"] = true });

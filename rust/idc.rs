@@ -62,6 +62,8 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Max messages per HTTP request on the `route` transport.
 const BATCH: usize = 64;
 const MAX_BACKOFF_MS: u64 = 60_000;
+/// Pairing is cheap, so keep retrying it briskly while a peer comes up.
+const MAX_PAIR_BACKOFF_MS: u64 = 10_000;
 const LOG_KEEP: u64 = 300;
 const SEEN_RETENTION: Duration = Duration::from_secs(7 * 24 * 3600);
 
@@ -841,7 +843,7 @@ pub fn idc_pair(ctx: &mut ProcedureContext, job: IdcPairJob) {
     }
     if pending {
         let attempt = job.attempt + 1;
-        let backoff = Duration::from_millis((500u64 << attempt.min(7)).min(MAX_BACKOFF_MS));
+        let backoff = Duration::from_millis((500u64 << attempt.min(7)).min(MAX_PAIR_BACKOFF_MS));
         ctx.with_tx(|tx| {
             tx.db.idc_pair_job().insert(IdcPairJob {
                 scheduled_id: 0,
@@ -944,6 +946,14 @@ pub fn idc_pair_route(ctx: &mut HandlerContext, req: Request) -> Response {
         log(
             tx, "in", &pair.from, "pair", "reducer", "", "paired", &detail, 0,
         );
+        // A peer just introduced itself, so it's up: pair back right away if we haven't yet.
+        if tx.db.idc_peer_token().peer().find(&pair.from).is_none() {
+            tx.db.idc_pair_job().insert(IdcPairJob {
+                scheduled_id: 0,
+                scheduled_at: ScheduleAt::Time(tx.timestamp),
+                attempt: 0,
+            });
+        }
         Ok::<_, String>(())
     });
     match result {

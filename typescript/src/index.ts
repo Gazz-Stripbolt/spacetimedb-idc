@@ -121,6 +121,8 @@ const MAX_CLOCK_SKEW_US = 5n * 60n * 1_000_000n;
 const LEASE_US = 60n * 1_000_000n;
 const HTTP_TIMEOUT = TimeDuration.fromMillis(10_000);
 const MAX_BACKOFF_MS = 60_000;
+/** Pairing is cheap, so keep retrying it briskly while a peer comes up. */
+const MAX_PAIR_BACKOFF_MS = 10_000;
 const BATCH = 64;
 const LOG_KEEP = 300n;
 const SEEN_RETENTION_US = 7n * 24n * 3600n * 1_000_000n;
@@ -561,7 +563,7 @@ export const pair = spacetimedb.procedure({ onSchedule: pairJob }, { arg: pairJo
   }
   if (pending) {
     const attempt = arg.attempt + 1;
-    const backoffUs = BigInt(Math.min(500 * 2 ** Math.min(attempt, 7), MAX_BACKOFF_MS)) * 1000n;
+    const backoffUs = BigInt(Math.min(500 * 2 ** Math.min(attempt, 7), MAX_PAIR_BACKOFF_MS)) * 1000n;
     ctx.withTx((tx) => {
       tx.db.pairJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.time(tx.timestamp.microsSinceUnixEpoch + backoffUs), attempt });
     });
@@ -595,6 +597,10 @@ export function pairRoute(ctx: IdcHandlerCtx, req: Request): SyncResponse {
     for (const k of [...tx.db.knownPeer.name.filter(from)]) tx.db.knownPeer.identity.delete(k.identity);
     tx.db.knownPeer.insert({ identity, name: from, pairedAt: tx.timestamp });
     writeLog(tx, { direction: 'in', peer: from, kind: 'pair', transport: 'reducer', msgId: '', event: 'paired', detail: `${identity.toHexString().slice(0, 16)} is ${from}` });
+    // A peer just introduced itself, so it's up: pair back right away if we haven't yet.
+    if (!tx.db.peerToken.peer.find(from)) {
+      tx.db.pairJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.time(tx.timestamp.microsSinceUnixEpoch), attempt: 0 });
+    }
   });
   return json(200, { ok: true });
 }

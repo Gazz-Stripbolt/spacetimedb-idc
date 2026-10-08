@@ -102,7 +102,8 @@ sequenceDiagram
 **Pairing** (reducer transport) automates the token and known-identity chore in both directions. Each database mints
 its own identity on the peer's host (`POST /v1/identity`), keeps the token privately, and introduces the identity to
 the peer with a signed `POST /route/idc/pair`. The peer then trusts it in `idc_receive`. This runs right after publish,
-retries until the peer is up, and re-runs by itself if a peer forgets us.
+retries until the peer is up, pairs back the moment a peer introduces itself, and re-runs by itself if a peer
+forgets us.
 
 **RPC:** a signed synchronous call from a procedure to a peer's route, e.g. `quote(sku)` returns the warehouse's answer
 in ~15 ms. **SQL pulls:** `/sql` from a procedure, the pre-HTTP-handler way.
