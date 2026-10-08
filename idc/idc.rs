@@ -287,20 +287,27 @@ const SIGNATURE_HEADER: &str = "x-idc-signature";
 // Sending
 // ---------------------------------------------------------------------------
 
-/// Call from your module's `init` reducer.
+/// Call from your module's `init` reducer. Safe to call again: everything is idempotent.
+///
+/// Adding idc to a database that's already published? `init` won't run again on update,
+/// so call the `idc_kick` reducer once after publishing. It does the same setup.
 pub fn init(ctx: &ReducerContext) {
     if ctx.db.idc_state().key().find(0).is_none() {
         let epoch = format!("{:x}", ctx.timestamp.to_micros_since_unix_epoch());
         ctx.db.idc_state().insert(IdcState { key: 0, epoch });
     }
+    if ctx.db.idc_prune_job().count() == 0 {
+        ctx.db.idc_prune_job().insert(IdcPruneJob {
+            scheduled_id: 0,
+            scheduled_at: ScheduleAt::Interval(TimeDuration::from_duration(Duration::from_secs(
+                3600,
+            ))),
+        });
+    }
     ctx.db.idc_pair_job().insert(IdcPairJob {
         scheduled_id: 0,
         scheduled_at: ScheduleAt::Time(ctx.timestamp),
         attempt: 0,
-    });
-    ctx.db.idc_prune_job().insert(IdcPruneJob {
-        scheduled_id: 0,
-        scheduled_at: ScheduleAt::Interval(TimeDuration::from_duration(Duration::from_secs(3600))),
     });
 }
 
@@ -364,14 +371,12 @@ fn schedule_flush(ctx: &ReducerContext, at: Timestamp) {
     }
 }
 
-/// Re-run pairing and flushing, e.g. after changing `IDC_PEERS` with `spacetime publish --env-only`.
+/// One-time setup for databases that were already published before idc was added,
+/// and a way to re-run pairing and flushing (e.g. after changing `IDC_PEERS` with
+/// `spacetime publish --env-only`).
 #[spacetimedb::reducer]
 pub fn idc_kick(ctx: &ReducerContext) {
-    ctx.db.idc_pair_job().insert(IdcPairJob {
-        scheduled_id: 0,
-        scheduled_at: ScheduleAt::Time(ctx.timestamp),
-        attempt: 0,
-    });
+    init(ctx);
     schedule_flush(ctx, ctx.timestamp);
 }
 

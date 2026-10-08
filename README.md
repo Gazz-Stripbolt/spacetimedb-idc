@@ -139,6 +139,20 @@ pub fn quote(ctx: &mut ProcedureContext, sku: String) -> String {
    IDC_SELF=shop IDC_PEERS=warehouse=… IDC_SECRET=… IDC_TRANSPORT=route spacetime publish my-shop
    ```
 
+### Adding it to a database that's already live
+
+This was tested by publishing a plain shop module first and then upgrading it in place to the idc version:
+
+- **Schema:** the `idc_*` tables are new, so `spacetime publish` adds them automatically. That's a non-breaking migration,
+  and existing data is untouched.
+- **Env vars:** supply the four `IDC_*` values on that publish. If your module already has a `#[spacetimedb::env]`
+  struct, move the four fields into it and delete the one in `idc.rs`, because a module has one environment declaration.
+- **Router:** if you already have a `#[router]`, `.merge(idc::router())` into it.
+- **`init` doesn't re-run on updates,** so call `spacetime call <db> idc_kick` once after the first idc publish. It does
+  the same (idempotent) setup: message-id epoch, cleanup schedule, pairing.
+- **Language:** `idc.rs` is Rust. The wire protocol is plain JSON plus an HMAC header, though, so a C# or TypeScript port
+  can talk to Rust peers. C#, C++ and TS all have procedures, schedule tables and HTTP handlers.
+
 Tables it adds: `idc_outbox`, `idc_seen`, `idc_peer_token`, `idc_known_peer` (all private), plus `idc_log` (public:
 event, kind, peer and latency, never payloads) and three schedule tables.
 
