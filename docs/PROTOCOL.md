@@ -1,6 +1,6 @@
 # Wire protocol
 
-Everything `idc.rs` (Rust) and `spacetimedb-idc` (TypeScript) send each other. Implement this and your module can
+Everything `idc.rs` (Rust), `Idc.cs` (C#) and `spacetimedb-idc` (TypeScript) send each other. Implement this and your module can
 join the same mesh from any language.
 
 ## Envelope

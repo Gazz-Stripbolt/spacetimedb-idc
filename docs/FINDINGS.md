@@ -78,7 +78,25 @@ TypeScript-specific gotchas:
 - **u64 columns are `bigint`.** Convert them before `JSON.stringify`. Timestamps are `microsSinceUnixEpoch: bigint`.
 - **No WebCrypto in the module runtime,** so HMAC comes from `@noble/hashes` (pure JS, bundled by `spacetime build`).
 
-Interop: the TS shop and the Rust warehouse pass the full 31-check suite against each other, on both transports.
+Interop: every shop language (TS, Rust, C#) passes the full 31-check suite against every warehouse language (Rust, C#),
+on both transports. That's six pairings, all in CI.
+
+## The C# port
+
+`idc-cs/Idc.cs` is a drop-in partial `Module` class (C# submodules aren't supported yet). What it took:
+
+- **No `System.Security.Cryptography` on wasi**, so the file carries a small managed SHA-256 / HMAC.
+- **System.Text.Json reflection is trimmed away.** `JsonNode` / `JsonObject` with primitive values work, but
+  `JsonArray.Add<T>(string)` (including the collection-initializer form) throws
+  `NoMetadataForType … EmptyJsonTypeInfoResolver`. Add `JsonValue.Create(...)` explicitly.
+- **`HttpMethod` is ambiguous** between `SpacetimeDB.HttpMethod` and `System.Net.Http.HttpMethod` under implicit usings,
+  so alias it.
+- **The message handler is a required partial method** (`public static partial void OnIdcMessage(IdcTx, IdcMessage)`),
+  so forgetting it is a compile error, not silently dropped messages.
+- `IdcTx(Local Db, Timestamp)` bridges reducer, procedure-transaction and handler-transaction contexts, which all expose
+  the same generated `Local`.
+- **Performance:** about 2–3× slower than Rust/TS (Mono interpreting IL on wasm). C# ⇄ C# route transport: ~154 orders/s,
+  60–90 ms round trips. Reducer transport: ~21 orders/s.
 
 ## Security model
 
@@ -102,6 +120,8 @@ Interop: the TS shop and the Rust warehouse pass the full 31-check suite against
 | 20 concurrent orders, route, *before batching* | 55 → 304 ms (sequential) |
 | 1000 orders at ~300/s, route | every order settled within ~30 ms of the last one placed |
 | 500 orders, route, TS shop | 233 orders/s; all settled ~180 ms after the last one placed |
+| 500 orders, route, C# ⇄ C# | 154 orders/s |
+| 300 orders, reducer, C# ⇄ C# | 21 orders/s |
 | 300 orders at ~280/s, reducer | 47 orders/s sustained (one `/call` per message) |
 | Synchronous RPC (`quote`) | ~15 ms |
 

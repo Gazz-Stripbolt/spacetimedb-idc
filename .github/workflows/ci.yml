@@ -5,83 +5,121 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
 jobs:
-  e2e:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-
       - name: Rust toolchain (wasm32)
         run: |
           rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown --component clippy,rustfmt
           rustup default stable
-
       - uses: Swatinem/rust-cache@v2
-
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet workload install wasi-experimental
+      - run: npm ci
+      - name: Rust
+        run: |
+          cargo fmt --all --check
+          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+      - name: TypeScript
+        run: npm run typecheck
+      - name: C#
+        run: |
+          dotnet build shop-cs -c Release
+          dotnet build warehouse-cs -c Release
 
-      - name: Install TypeScript packages
-        run: npm ci
-
+  # Standalone blocks module HTTP to loopback, so the tests use a build with
+  # SpacetimeDB's own `allow_loopback_http_for_tests` feature, cached per version.
+  dev-server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
       - name: Install SpacetimeDB CLI
         run: |
           curl -sSf https://install.spacetimedb.com | sh -s -- --yes
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Lint
-        run: |
-          cargo fmt --all --check
-          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
-          npm run typecheck
-
-      - name: Resolve SpacetimeDB version
-        id: ver
+      - id: ver
         run: echo "version=$(spacetime --version | sed -n 's/.*tool version \([0-9.]*\);.*/\1/p')" >> "$GITHUB_OUTPUT"
-
-      # Standalone blocks module HTTP to loopback, so CI uses a build with
-      # SpacetimeDB's own `allow_loopback_http_for_tests` feature (cached per version).
-      - name: Cache dev server
-        id: devserver
+      - id: cache
         uses: actions/cache@v4
         with:
           path: .dev-server/spacetimedb-standalone-${{ steps.ver.outputs.version }}
           key: dev-server-${{ runner.os }}-${{ steps.ver.outputs.version }}
-
-      - name: Build dev server
-        if: steps.devserver.outputs.cache-hit != 'true'
+      - if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          rustup toolchain install stable --profile minimal && rustup default stable
           scripts/dev-server.sh build
           rm -rf .dev-server/SpacetimeDB-*
 
+  # Every shop language against every warehouse language: TS⇄Rust, Rust⇄Rust, C#⇄Rust,
+  # TS⇄C#, Rust⇄C#, C#⇄C#. Each runs the full suite on both transports.
+  e2e:
+    needs: dev-server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shop: [shop-ts, shop-rs, shop-cs]
+        warehouse: [warehouse, warehouse-cs]
+    name: e2e (${{ matrix.shop }} ⇄ ${{ matrix.warehouse }})
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust toolchain (wasm32)
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        if: matrix.shop == 'shop-cs' || matrix.warehouse == 'warehouse-cs'
+        with:
+          dotnet-version: 8.0.x
+      - if: matrix.shop == 'shop-cs' || matrix.warehouse == 'warehouse-cs'
+        run: dotnet workload install wasi-experimental
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache/restore@v4
+        with:
+          path: .dev-server/spacetimedb-standalone-${{ needs.dev-server.outputs.version }}
+          key: dev-server-${{ runner.os }}-${{ needs.dev-server.outputs.version }}
+          fail-on-cache-miss: true
       - name: Start dev server
         run: |
           mkdir -p ~/.config/spacetime
           nohup scripts/dev-server.sh start > server.log 2>&1 &
           for i in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:3000/v1/ping && break; sleep 1; done
-
-      - name: "E2E: TypeScript shop (submodule) ⇄ Rust warehouse"
+      - name: Deploy
+        run: SHOP_MODULE=${{ matrix.shop }} WAREHOUSE_MODULE=${{ matrix.warehouse }} scripts/deploy.sh
+      - name: End-to-end tests
+        run: scripts/e2e.sh
+      - name: Benchmark (route transport)
         run: |
-          scripts/deploy.sh
-          scripts/e2e.sh
-
-      - name: "Benchmark: TypeScript shop, route transport"
-        run: |
-          IDC_TRANSPORT=route spacetime publish warehouse -s local --env-only -y
-          IDC_TRANSPORT=route spacetime publish shop -s local --env-only -y
-          spacetime call shop idc_kick -s local
-          scripts/bench.sh 500 16
-
-      - name: "E2E: Rust shop ⇄ Rust warehouse"
-        run: |
-          spacetime delete shop -s local -y
-          spacetime delete warehouse -s local -y
-          SHOP_MODULE=shop-rs scripts/deploy.sh
-          scripts/e2e.sh
-
+          for db in warehouse shop; do
+            (cd /tmp && IDC_TRANSPORT=route spacetime publish $db -s local --env-only -y)
+            spacetime call $db idc_kick -s local
+          done
+          scripts/bench.sh 300 16
       - name: Server log
         if: failure()
         run: tail -n 200 server.log || true

@@ -5,3 +5,5 @@ spacetime.local.json
 .idc-secret
 node_modules/
 dist/
+bin/
+obj/

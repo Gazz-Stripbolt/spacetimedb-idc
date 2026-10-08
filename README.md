@@ -8,12 +8,14 @@ Two databases that talk to each other both ways: pushed in about 10 ms per hop, 
 applied exactly once, and with **no polling**. Built from parts SpacetimeDB already ships: procedures,
 scheduled tables and HTTP handlers.
 
-**TypeScript:** a [SpacetimeDB submodule](#typescript-mount-the-submodule) · **Rust:** a [drop-in file](#rust-drop-in-idcrs) · same wire protocol, so they talk to each other
+**TypeScript:** a [SpacetimeDB submodule](#typescript-mount-the-submodule) · **Rust:** a [drop-in file](#rust-drop-in-idcrs) · **C#:** a [drop-in file](#c-drop-in-idccs)<br>
+Same wire protocol, so every language talks to every other. CI proves all six pairings.
 
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
 ![SpacetimeDB 2.11](https://img.shields.io/badge/SpacetimeDB-2.11-e8730c)
 ![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
 ![Rust drop-in](https://img.shields.io/badge/Rust-drop--in-b7410e)
+![C# drop-in](https://img.shields.io/badge/C%23-drop--in-512bd4)
 ![procedures + HTTP handlers: beta](https://img.shields.io/badge/procedures%20%2B%20HTTP%20handlers-beta-yellow)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -37,15 +39,22 @@ sore spots:
    ways, *both* databases need *both* tables.
 3. **Nothing is event-driven.** If database A changes something B cares about, B finds out by polling on a schedule.
 
-This repo fixes all three, in two languages that speak the same protocol:
+This repo fixes all three, in the three main module languages, all speaking one protocol:
 
 | | What | Where |
 |---|---|---|
 | **TypeScript** | A **SpacetimeDB submodule**: mount it with `schema({ ..., idc })` | [`idc-ts/`](idc-ts) (`spacetimedb-idc`) |
 | **Rust** | A **drop-in file** (Rust submodules aren't supported yet) | [`idc/idc.rs`](idc/idc.rs) |
+| **C#** | A **drop-in file** (C# submodules aren't supported yet) | [`idc-cs/Idc.cs`](idc-cs/Idc.cs) |
 
-The demo runs a **TypeScript shop** (using the submodule) against a **Rust warehouse** (using `idc.rs`), and CI runs the
-whole test suite twice: TS ⇄ Rust and Rust ⇄ Rust.
+The demo is a **shop** and a **warehouse**. There's a shop in all three languages and a warehouse in Rust and C#, and CI
+runs the full suite on **every combination**:
+
+| shop ↓ · warehouse → | Rust | C# |
+|---|---|---|
+| **TypeScript** (submodule) | ✅ | ✅ |
+| **Rust** | ✅ | ✅ |
+| **C#** | ✅ | ✅ |
 
 ## The answer: transactional outbox → scheduled procedure → peer's HTTP route
 
@@ -87,7 +96,7 @@ sequenceDiagram
 | Auth | HMAC-SHA256 over `timestamp.body`, shared secret | SpacetimeDB identity token + known-identity table | Token (public tables need none) |
 | Event-driven | ✅ push | ✅ push | ❌ pull |
 | Batching | ✅ up to 64 messages per request | ❌ one message per call | n/a |
-| Throughput* | **keeps up with ~300 orders/s** (~900 msgs/s); TS shop ~230/s | ~47 orders/s (~140 msgs/s); TS shop ~49/s | n/a |
+| Throughput* | **keeps up with ~300 orders/s** (~900 msgs/s) Rust · ~230/s TS · ~150/s C# | ~47 orders/s Rust/TS · ~21/s C# | n/a |
 | Round trip* (shop → warehouse → shop) | ~15–30 ms | ~29 ms | n/a |
 | Needs | `IDC_SECRET` on both sides | **Pairing** (automatic, see below) | — |
 
@@ -170,6 +179,31 @@ Its tables appear as `idc.outbox`, `idc.log` (public) and so on.
 > Install with a single copy of the `spacetimedb` package (npm workspaces, or a plain dependency). With two copies,
 > `spacetime publish` fails with *"Local module schema inspection failed"*.
 
+## C#: drop-in `Idc.cs`
+
+1. Add [`idc-cs/Idc.cs`](idc-cs/Idc.cs) to your module project (copy it, or link it in your `.csproj` with
+   `<Compile Include="path/to/Idc.cs" />`).
+2. Implement the message handler, call `IdcInit` from `Init`, and add the routes:
+   ```csharp
+   public static partial void OnIdcMessage(IdcTx tx, IdcMessage msg)
+   {
+       switch (msg.Kind)
+       {
+           case "reservation": /* tx.Db.Order.Id.Update(...) */ break;
+           default: throw new Exception($"unknown kind {msg.Kind}");   // throw = permanent refusal (dead letter)
+       }
+   }
+
+   [SpacetimeDB.Reducer(ReducerKind.Init)]
+   public static void Init(ReducerContext ctx) => IdcInit(ctx);
+
+   [SpacetimeDB.HttpRouter]
+   public static Router Routes() => IdcRoutes(Router.New()).Get("/api/state", Handlers.State);
+   ```
+3. Send from any reducer: `IdcSend(ctx, "warehouse", "reserve", new JsonObject { ["order_id"] = order.Id, ... })`.
+4. Configure with the same four env vars (`IdcEnvironment` in the file declares them). Also available: `IdcRpc`, `IdcSql`,
+   `IdcVerifyRpc` / `IdcRpcReply` and `IdcStateJson`. Full examples: [`shop-cs`](shop-cs/Lib.cs) and [`warehouse-cs`](warehouse-cs/Lib.cs).
+
 ## Rust: drop-in `idc.rs`
 
 1. Copy [`idc/idc.rs`](idc/idc.rs) into your project and pull it in:
@@ -216,14 +250,15 @@ This was tested by publishing a plain shop module first and then upgrading it in
 - **`init` doesn't re-run on updates,** so call `spacetime call <db> idc_kick` once after the first idc publish. It does
   the same (idempotent) setup: message-id epoch, cleanup schedule, pairing.
 - **Other languages:** the wire protocol is plain JSON plus one HMAC header (see [docs/PROTOCOL.md](docs/PROTOCOL.md)),
-  so a C# or C++ port can join the same mesh.
+  so a C++ port could join the same mesh too.
 
 Tables it adds: `idc_outbox`, `idc_seen`, `idc_peer_token`, `idc_known_peer` (all private), plus `idc_log` (public:
 event, kind, peer and latency, never payloads) and three schedule tables.
 
 ## Run the demo
 
-You need the [SpacetimeDB CLI](https://spacetimedb.com/install) 2.11+, Node 22+, Rust with `wasm32-unknown-unknown`, and `python3` for the tests.
+You need the [SpacetimeDB CLI](https://spacetimedb.com/install) 2.11+, Node 22+, Rust with `wasm32-unknown-unknown`,
+.NET 8 with the `wasi-experimental` workload (only for the C# modules), and `python3` for the tests.
 
 > **Why a custom local server?** Standalone refuses outbound HTTP from modules to loopback and private addresses
 > (SSRF protection). That's good for production, but it means two databases on one local server can't reach each other.
@@ -240,7 +275,7 @@ npm install                      # the TS submodule + TS shop (npm workspaces)
 scripts/deploy.sh                # publish the Rust warehouse + TS shop, pointed at each other
 open http://127.0.0.1:3000/v1/database/warehouse/route/   # the dashboard above
 
-SHOP_MODULE=shop-rs scripts/deploy.sh   # or: the Rust shop instead
+SHOP_MODULE=shop-cs WAREHOUSE_MODULE=warehouse-cs scripts/deploy.sh   # any mix: shop-ts|shop-rs|shop-cs × warehouse|warehouse-cs
 
 scripts/e2e.sh                   # 31 end-to-end checks
 scripts/bench.sh 500 16          # throughput
@@ -259,8 +294,8 @@ spacetime sql shop "SELECT * FROM idc_log"    # what happened, with latencies
 
 ## What the tests cover
 
-[`scripts/e2e.sh`](scripts/e2e.sh) runs against a fresh deploy. CI runs it on every push, twice: **TypeScript shop ⇄ Rust
-warehouse** and **Rust shop ⇄ Rust warehouse**.
+[`scripts/e2e.sh`](scripts/e2e.sh) runs against a fresh deploy. CI runs it on every push for **all six shop × warehouse
+language combinations** (see the matrix above), each on both transports.
 
 - **Pairing:** both databases hold a token for the other *and* trust the other's identity, with no manual steps.
 - **Event-driven replication:** a warehouse restock appears in the shop's mirror by push.
@@ -284,6 +319,8 @@ warehouse** and **Rust shop ⇄ Rust warehouse**.
 - **TypeScript `ctx.http.fetch` throws on status 530,** which is how `/call` reports a reducer error, so the reason is
   lost. On the reducer transport the TS side re-pairs once, then treats a repeat 530 as a refusal. (The Rust side can read
   the body.) The route transport isn't affected.
+- **C# is the slowest of the three** (Mono interpreting .NET on wasm): ~60–70 ms round trips and ~150 orders/s C# ⇄ C#
+  on the route transport, vs ~25 ms and ~300/s for Rust. That's still plenty for most cross-database traffic.
 - **Procedures and HTTP handlers are beta** (`features = ["unstable"]`). APIs may move between releases.
 - **Clocks:** signatures carry a timestamp and are accepted within ±5 minutes. Replays inside that window are caught by
   the inbox, and inbox records are kept for 7 days.
@@ -302,10 +339,13 @@ More detail, every gotcha we hit, and what native IDC could make easier: **[docs
 ```
 idc-ts/               TypeScript submodule (npm: spacetimedb-idc)
 idc/idc.rs            Rust drop-in: outbox, flush, inbox, pairing, rpc, sql, signing
+idc-cs/Idc.cs         C# drop-in: the same, plus a managed SHA-256 (no crypto on wasi)
 idc/dashboard.*       live dashboard the Rust modules serve at /route/
 shop-ts/              TypeScript shop: mounts the submodule
 shop-rs/              Rust shop: same thing with idc.rs
+shop-cs/              C# shop: same thing with Idc.cs
 warehouse/            Rust warehouse: stock + reservations, restock, /rpc/stock
+warehouse-cs/         C# warehouse: the same in C#
 scripts/              dev-server.sh · deploy.sh · e2e.sh · bench.sh
 docs/                 FINDINGS.md · PROTOCOL.md
 ```
