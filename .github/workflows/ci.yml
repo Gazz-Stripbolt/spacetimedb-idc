@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust toolchain (wasm32)
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown --component clippy,rustfmt
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Lint
+        run: |
+          cargo fmt --all --check
+          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Resolve SpacetimeDB version
+        id: ver
+        run: echo "version=$(spacetime --version | sed -n 's/.*tool version \([0-9.]*\);.*/\1/p')" >> "$GITHUB_OUTPUT"
+
+      # Standalone blocks module HTTP to loopback, so CI uses a build with
+      # SpacetimeDB's own `allow_loopback_http_for_tests` feature (cached per version).
+      - name: Cache dev server
+        id: devserver
+        uses: actions/cache@v4
+        with:
+          path: .dev-server/spacetimedb-standalone-${{ steps.ver.outputs.version }}
+          key: dev-server-${{ runner.os }}-${{ steps.ver.outputs.version }}
+
+      - name: Build dev server
+        if: steps.devserver.outputs.cache-hit != 'true'
+        run: |
+          scripts/dev-server.sh build
+          rm -rf .dev-server/SpacetimeDB-*
+
+      - name: Start dev server
+        run: |
+          mkdir -p ~/.config/spacetime
+          nohup scripts/dev-server.sh start > server.log 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:3000/v1/ping && break; sleep 1; done
+
+      - name: Deploy shop + warehouse
+        run: scripts/deploy.sh
+
+      - name: End-to-end tests
+        run: scripts/e2e.sh
+
+      - name: Benchmark
+        run: |
+          IDC_TRANSPORT=route spacetime publish warehouse -s local --env-only -y
+          IDC_TRANSPORT=route spacetime publish shop -s local --env-only -y
+          scripts/bench.sh 500 16
+
+      - name: Server log
+        if: failure()
+        run: tail -n 200 server.log || true
