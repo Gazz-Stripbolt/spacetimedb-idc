@@ -1,0 +1,26 @@
+{
+  "name": "spacetimedb-idc",
+  "version": "0.1.0",
+  "description": "Inter-database communication for SpacetimeDB, as a submodule: transactional outbox, push delivery, idempotent inbox. Wire-compatible with idc.rs.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src"],
+  "keywords": ["spacetimedb", "submodule", "inter-database-communication", "outbox"],
+  "repository": { "type": "git", "url": "https://github.com/Gazz-Stripbolt/spacetimedb-idc", "directory": "idc-ts" },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0"
+  },
+  "peerDependencies": {
+    "spacetimedb": "2.11.*"
+  },
+  "devDependencies": {
+    "spacetimedb": "2.11.*",
+    "typescript": "~5.6.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

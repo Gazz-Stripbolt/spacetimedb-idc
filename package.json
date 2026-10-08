@@ -1,0 +1,8 @@
+{
+  "name": "spacetimedb-idc-workspace",
+  "private": true,
+  "workspaces": ["idc-ts", "shop-ts"],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

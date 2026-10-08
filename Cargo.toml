@@ -1,5 +1,5 @@
 [workspace]
-members = ["shop", "warehouse"]
+members = ["shop-rs", "warehouse"]
 resolver = "2"
 
 [profile.release]

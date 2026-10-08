@@ -56,6 +56,30 @@ cross-database goes over HTTP, started by a procedure or a handler.
 11. **The handler RNG is timestamp-seeded.** Nothing here relies on randomness for security: authentication is the HMAC
     secret or a server-issued token.
 
+## Packaging it as a TypeScript submodule
+
+Submodules (2.11, TypeScript only for now) are a good fit, but they come with rules that shaped the API:
+
+| Rule | Consequence for idc |
+|---|---|
+| Submodules can't declare env vars, and their host-dispatched entry points can't read the root's | Config lives in a private `idc.config` table. The consumer copies it from its own env in `init` and `idc_kick` (`idc.configure(ctx.as.idc, …)`). Run `idc_kick` after `publish --env-only`. |
+| No lifecycle reducers in submodules | `configure()` is a helper the consumer's `init` calls. |
+| Submodule routers are ignored | The consumer registers `/idc/inbox` and `/idc/pair` on its own router, delegating to `idc.inbox` / `idc.pairRoute`. |
+| A submodule can't call into its consumer | `idc.inbox` / `idc.receive` take the **root** context plus `{ scope: tx => tx.as.idc, onMessage }`, so the dedupe record (submodule table) and your effect (consumer tables) commit in one transaction. |
+| Scheduled procedures in a submodule *are* dispatched | `idc.flush` and `idc.pair` run on their own, with no consumer wiring. |
+
+TypeScript-specific gotchas:
+
+- **`ctx.http.fetch` throws `invalid status code: 530`.** The SDK maps status codes through a list of standard ones, and
+  530 (how `/call` reports a reducer error) isn't on it, so the response body is lost. The TS library re-pairs once on a
+  530, then dead-letters a repeat. Worth an upstream fix.
+- **One copy of the `spacetimedb` package.** If the submodule package carries its own `node_modules/spacetimedb`, the CLI
+  fails with an unhelpful *"Local module schema inspection failed"*. Use npm workspaces, as this repo does.
+- **u64 columns are `bigint`.** Convert them before `JSON.stringify`. Timestamps are `microsSinceUnixEpoch: bigint`.
+- **No WebCrypto in the module runtime,** so HMAC comes from `@noble/hashes` (pure JS, bundled by `spacetime build`).
+
+Interop: the TS shop and the Rust warehouse pass the full 31-check suite against each other, on both transports.
+
 ## Security model
 
 - **Route transport:** HMAC-SHA256 over `"<micros>.<body>"` with a mesh-wide secret from an env var, ±5 minute window,
@@ -72,11 +96,12 @@ cross-database goes over HTTP, started by a procedure or a handler.
 
 | Scenario | Result |
 |---|---|
-| Single order, route transport | 15–30 ms round trip |
+| Single order, route transport | 15–30 ms round trip (Rust shop), 26–30 ms (TS shop) |
 | Single order, reducer transport | ~29–33 ms round trip |
 | 20 concurrent orders, route (batched) | all settled in 26–33 ms |
 | 20 concurrent orders, route, *before batching* | 55 → 304 ms (sequential) |
 | 1000 orders at ~300/s, route | every order settled within ~30 ms of the last one placed |
+| 500 orders, route, TS shop | 233 orders/s; all settled ~180 ms after the last one placed |
 | 300 orders at ~280/s, reducer | 47 orders/s sustained (one `/call` per message) |
 | Synchronous RPC (`quote`) | ~15 ms |
 

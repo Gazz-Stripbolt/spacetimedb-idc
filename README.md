@@ -8,8 +8,12 @@ Two databases that talk to each other both ways: pushed in about 10 ms per hop, 
 applied exactly once, and with **no polling**. Built from parts SpacetimeDB already ships: procedures,
 scheduled tables and HTTP handlers.
 
+**TypeScript:** a [SpacetimeDB submodule](#typescript-mount-the-submodule) · **Rust:** a [drop-in file](#rust-drop-in-idcrs) · same wire protocol, so they talk to each other
+
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
 ![SpacetimeDB 2.11](https://img.shields.io/badge/SpacetimeDB-2.11-e8730c)
+![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
+![Rust drop-in](https://img.shields.io/badge/Rust-drop--in-b7410e)
 ![procedures + HTTP handlers: beta](https://img.shields.io/badge/procedures%20%2B%20HTTP%20handlers-beta-yellow)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -33,7 +37,15 @@ sore spots:
    ways, *both* databases need *both* tables.
 3. **Nothing is event-driven.** If database A changes something B cares about, B finds out by polling on a schedule.
 
-This repo fixes all three. It's a single drop-in file, [`idc/idc.rs`](idc/idc.rs), plus a demo that puts it through its paces.
+This repo fixes all three, in two languages that speak the same protocol:
+
+| | What | Where |
+|---|---|---|
+| **TypeScript** | A **SpacetimeDB submodule**: mount it with `schema({ ..., idc })` | [`idc-ts/`](idc-ts) (`spacetimedb-idc`) |
+| **Rust** | A **drop-in file** (Rust submodules aren't supported yet) | [`idc/idc.rs`](idc/idc.rs) |
+
+The demo runs a **TypeScript shop** (using the submodule) against a **Rust warehouse** (using `idc.rs`), and CI runs the
+whole test suite twice: TS ⇄ Rust and Rust ⇄ Rust.
 
 ## The answer: transactional outbox → scheduled procedure → peer's HTTP route
 
@@ -75,7 +87,7 @@ sequenceDiagram
 | Auth | HMAC-SHA256 over `timestamp.body`, shared secret | SpacetimeDB identity token + known-identity table | Token (public tables need none) |
 | Event-driven | ✅ push | ✅ push | ❌ pull |
 | Batching | ✅ up to 64 messages per request | ❌ one message per call | n/a |
-| Throughput* | **keeps up with ~300 orders/s** (~900 msgs/s) | ~47 orders/s (~140 msgs/s) | n/a |
+| Throughput* | **keeps up with ~300 orders/s** (~900 msgs/s); TS shop ~230/s | ~47 orders/s (~140 msgs/s); TS shop ~49/s | n/a |
 | Round trip* (shop → warehouse → shop) | ~15–30 ms | ~29 ms | n/a |
 | Needs | `IDC_SECRET` on both sides | **Pairing** (automatic, see below) | — |
 
@@ -105,7 +117,60 @@ pub fn quote(ctx: &mut ProcedureContext, sku: String) -> String {
 
 `spacetime call shop quote gear` → `{"answered_by":"warehouse","qty":17,"sku":"gear"}` in about 15 ms.
 
-## Use it in your module
+## TypeScript: mount the submodule
+
+Not on npm yet: copy [`idc-ts/`](idc-ts) into your repo and add it as an npm workspace package (that's what
+[`shop-ts`](shop-ts) does), then depend on `"spacetimedb-idc"`.
+
+```typescript
+import { schema, table, t, Router, type ReducerCtx } from 'spacetimedb/server';
+import * as idc from 'spacetimedb-idc';                 // `import * as`, not a default import
+
+const spacetimedb = schema(
+  { order, idc },                                       // mounted under the namespace "idc"
+  { env: { IDC_SELF: t.string(), IDC_SECRET: t.string(), IDC_PEERS: t.string(),
+           IDC_TRANSPORT: t.enum('IdcTransport', ['route', 'reducer']) } }
+);
+export default spacetimedb;
+type Ctx = ReducerCtx<typeof spacetimedb.schemaType>;
+
+// Submodules can't read env vars or have lifecycle reducers, so hand the config in:
+const cfg = (ctx: Ctx) => ({ self: ctx.env.IDC_SELF, secret: ctx.env.IDC_SECRET,
+                             peers: ctx.env.IDC_PEERS, transport: ctx.env.IDC_TRANSPORT });
+export const init    = spacetimedb.init((ctx) => idc.configure(ctx.as.idc, cfg(ctx)));
+export const idcKick = spacetimedb.reducer((ctx) => idc.configure(ctx.as.idc, cfg(ctx)));
+
+// Submodule routers aren't applied automatically, so register the two routes yourself:
+const handlers = { scope: (tx: Ctx) => tx.as.idc, onMessage };
+export const idcInbox   = spacetimedb.httpHandler((ctx, req) => idc.inbox(ctx, req, handlers));
+export const idcPair    = spacetimedb.httpHandler((ctx, req) => idc.pairRoute(ctx.as.idc, req));
+export const idcReceive = spacetimedb.reducer({ envelope: t.string() },
+  (ctx, { envelope }) => idc.receive(ctx, envelope, handlers));   // only needed for the reducer transport
+export const router = spacetimedb.httpRouter(
+  new Router().post('/idc/inbox', idcInbox).post('/idc/pair', idcPair));
+
+// Your logic: runs inside the receiving transaction, alongside the dedupe record.
+function onMessage(tx: Ctx, msg: idc.Message) {
+  if (msg.kind === 'reservation') { /* update tx.db.order ... */ return; }
+  throw new Error(`unknown kind ${msg.kind}`);   // throw = permanent refusal (dead letter)
+}
+
+// Send from any reducer:
+export const placeOrder = spacetimedb.reducer({ sku: t.string(), qty: t.u32() }, (ctx, { sku, qty }) => {
+  const o = ctx.db.order.insert({ /* ... */ });
+  idc.send(ctx.as.idc, 'warehouse', 'reserve', { order_id: Number(o.id), sku, qty });
+});
+```
+
+Also available: `idc.rpc(ctx.as.idc, peer, path, payload)` and `idc.sql(...)` from procedures, `idc.verifyRpc` / `idc.rpcReply`
+for RPC handlers, and `idc.stateJson(tx.as.idc)` for dashboards. The full consumer is [`shop-ts/src/index.ts`](shop-ts/src/index.ts).
+Its tables appear as `idc.outbox`, `idc.log` (public) and so on.
+
+> After `spacetime publish --env-only`, call `idc_kick` so the submodule picks up the new values.
+> Install with a single copy of the `spacetimedb` package (npm workspaces, or a plain dependency). With two copies,
+> `spacetime publish` fails with *"Local module schema inspection failed"*.
+
+## Rust: drop-in `idc.rs`
 
 1. Copy [`idc/idc.rs`](idc/idc.rs) into your project and pull it in:
    ```rust
@@ -139,7 +204,7 @@ pub fn quote(ctx: &mut ProcedureContext, sku: String) -> String {
    IDC_SELF=shop IDC_PEERS=warehouse=… IDC_SECRET=… IDC_TRANSPORT=route spacetime publish my-shop
    ```
 
-### Adding it to a database that's already live
+### Adding it to a database that's already live (both languages)
 
 This was tested by publishing a plain shop module first and then upgrading it in place to the idc version:
 
@@ -150,15 +215,15 @@ This was tested by publishing a plain shop module first and then upgrading it in
 - **Router:** if you already have a `#[router]`, `.merge(idc::router())` into it.
 - **`init` doesn't re-run on updates,** so call `spacetime call <db> idc_kick` once after the first idc publish. It does
   the same (idempotent) setup: message-id epoch, cleanup schedule, pairing.
-- **Language:** `idc.rs` is Rust. The wire protocol is plain JSON plus an HMAC header, though, so a C# or TypeScript port
-  can talk to Rust peers. C#, C++ and TS all have procedures, schedule tables and HTTP handlers.
+- **Other languages:** the wire protocol is plain JSON plus one HMAC header (see [docs/PROTOCOL.md](docs/PROTOCOL.md)),
+  so a C# or C++ port can join the same mesh.
 
 Tables it adds: `idc_outbox`, `idc_seen`, `idc_peer_token`, `idc_known_peer` (all private), plus `idc_log` (public:
 event, kind, peer and latency, never payloads) and three schedule tables.
 
 ## Run the demo
 
-You need the [SpacetimeDB CLI](https://spacetimedb.com/install) 2.11+, Rust with `wasm32-unknown-unknown`, and `python3` for the tests.
+You need the [SpacetimeDB CLI](https://spacetimedb.com/install) 2.11+, Node 22+, Rust with `wasm32-unknown-unknown`, and `python3` for the tests.
 
 > **Why a custom local server?** Standalone refuses outbound HTTP from modules to loopback and private addresses
 > (SSRF protection). That's good for production, but it means two databases on one local server can't reach each other.
@@ -171,8 +236,11 @@ git clone https://github.com/Gazz-Stripbolt/spacetimedb-idc && cd spacetimedb-id
 scripts/dev-server.sh build      # once: builds standalone with loopback allowed (~15-40 min)
 scripts/dev-server.sh start &    # in-memory server on 127.0.0.1:3000
 
-scripts/deploy.sh                # publish warehouse + shop, pointed at each other
-open http://127.0.0.1:3000/v1/database/shop/route/      # the dashboard above
+npm install                      # the TS submodule + TS shop (npm workspaces)
+scripts/deploy.sh                # publish the Rust warehouse + TS shop, pointed at each other
+open http://127.0.0.1:3000/v1/database/warehouse/route/   # the dashboard above
+
+SHOP_MODULE=shop-rs scripts/deploy.sh   # or: the Rust shop instead
 
 scripts/e2e.sh                   # 31 end-to-end checks
 scripts/bench.sh 500 16          # throughput
@@ -191,7 +259,8 @@ spacetime sql shop "SELECT * FROM idc_log"    # what happened, with latencies
 
 ## What the tests cover
 
-[`scripts/e2e.sh`](scripts/e2e.sh) runs against a fresh deploy, and CI runs it on every push:
+[`scripts/e2e.sh`](scripts/e2e.sh) runs against a fresh deploy. CI runs it on every push, twice: **TypeScript shop ⇄ Rust
+warehouse** and **Rust shop ⇄ Rust warehouse**.
 
 - **Pairing:** both databases hold a token for the other *and* trust the other's identity, with no manual steps.
 - **Event-driven replication:** a warehouse restock appears in the shop's mirror by push.
@@ -206,11 +275,15 @@ spacetime sql shop "SELECT * FROM idc_log"    # what happened, with latencies
 - **Outage:** peer unreachable → the order waits, retries back off, and it's delivered automatically once the peer is back.
 - **Ordering:** 20 concurrent orders arrive at the warehouse in commit order.
 - **Reducer transport:** the full round trip through `/call` + known identities.
+- **Re-pairing:** a peer that lost our identity gets re-introduced automatically.
 
 ## Good to know
 
 - **HTTP can't happen inside a transaction.** `ctx.http` fails inside `with_tx`. That's why delivery is "claim in one
   tx → HTTP → settle in another tx", with a lease so two flushers never send the same message.
+- **TypeScript `ctx.http.fetch` throws on status 530,** which is how `/call` reports a reducer error, so the reason is
+  lost. On the reducer transport the TS side re-pairs once, then treats a repeat 530 as a refusal. (The Rust side can read
+  the body.) The route transport isn't affected.
 - **Procedures and HTTP handlers are beta** (`features = ["unstable"]`). APIs may move between releases.
 - **Clocks:** signatures carry a timestamp and are accepted within ±5 minutes. Replays inside that window are caught by
   the inbox, and inbox records are kept for 7 days.
@@ -227,11 +300,14 @@ More detail, every gotcha we hit, and what native IDC could make easier: **[docs
 ## Layout
 
 ```
-idc/idc.rs            the library: outbox, flush, inbox, pairing, rpc, sql, signing (drop-in)
-idc/dashboard.*       live dashboard both modules serve at /route/
-shop/src/lib.rs       orders + stock mirror; place_order, quote, peek_warehouse
-warehouse/src/lib.rs  stock + reservations; restock, /rpc/stock
+idc-ts/               TypeScript submodule (npm: spacetimedb-idc)
+idc/idc.rs            Rust drop-in: outbox, flush, inbox, pairing, rpc, sql, signing
+idc/dashboard.*       live dashboard the Rust modules serve at /route/
+shop-ts/              TypeScript shop: mounts the submodule
+shop-rs/              Rust shop: same thing with idc.rs
+warehouse/            Rust warehouse: stock + reservations, restock, /rpc/stock
 scripts/              dev-server.sh · deploy.sh · e2e.sh · bench.sh
+docs/                 FINDINGS.md · PROTOCOL.md
 ```
 
 ## Credits

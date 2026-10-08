@@ -1,5 +1,5 @@
 [package]
-name = "shop"
+name = "shop_rs"
 version = "0.1.0"
 edition = "2024"
 

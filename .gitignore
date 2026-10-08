@@ -3,3 +3,5 @@ target/
 spacetime.local.json
 .dev-server/
 .idc-secret
+node_modules/
+dist/

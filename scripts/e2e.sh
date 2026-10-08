@@ -99,9 +99,11 @@ wait_for "reply for a nonexistent order is parked as dead, not retried forever" 
 
 echo "Outage and recovery (retries with backoff, no lost messages)"
 IDC_PEERS="warehouse=$HOST/v1/database/does-not-exist" spacetime publish "$SHOP" -s "$SERVER" --env-only -y >/dev/null 2>&1
+spacetime call "$SHOP" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here
 call shop place_order '["gear", 1]' >/dev/null
 wait_for "order waits while the warehouse is unreachable" shop "s['orders'][0]['status'] == 'pending' and s['idc']['outbox_pending'] == 1 and any(l['event'] == 'retry' for l in s['idc']['log'])" 10
 IDC_PEERS="warehouse=$HOST/v1/database/$WAREHOUSE" spacetime publish "$SHOP" -s "$SERVER" --env-only -y >/dev/null 2>&1
+spacetime call "$SHOP" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here
 wait_for "delivered automatically once it's back" shop "s['orders'][0]['status'] == 'confirmed' and s['idc']['outbox_pending'] == 0" 30
 
 echo "Ordering under a burst (20 concurrent orders)"
@@ -113,7 +115,9 @@ echo "    round trips (ms): $(q shop "sorted(round(o['round_trip_ms'],1) for o i
 
 echo "Reducer transport (identity token + known-identity check)"
 IDC_TRANSPORT=reducer spacetime publish "$WAREHOUSE" -s "$SERVER" --env-only -y >/dev/null 2>&1
+spacetime call "$WAREHOUSE" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here
 IDC_TRANSPORT=reducer spacetime publish "$SHOP" -s "$SERVER" --env-only -y >/dev/null 2>&1
+spacetime call "$SHOP" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here
 check "transport is reducer" reducer "$(q shop "s['idc']['transport']")"
 call shop place_order '["sprocket", 3]' >/dev/null
 wait_for "order confirmed over reducer calls" shop "s['orders'][0]['status'] == 'confirmed'" 5

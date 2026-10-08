@@ -263,7 +263,7 @@ pub fn verify(
     let mut t = None;
     let mut v1 = None;
     for part in signature.split(',') {
-        match part.split_once('=') {
+        match part.trim().split_once('=') {
             Some(("t", v)) => t = v.parse::<i64>().ok(),
             Some(("v1", v)) => v1 = unhex(v),
             _ => {}
@@ -630,6 +630,10 @@ fn deliver(ctx: &mut ProcedureContext, batch: &[Claimed]) -> Vec<Delivery> {
             .contains(&status);
         // 4xx means the peer understood and refused: retrying won't help.
         // 401/404 stay retryable (not paired yet, or the peer isn't published yet).
+        // 530 is how `/call` reports a reducer error: "not a known peer" means pair
+        // again and retry; any other reducer error is a permanent refusal.
+        let permanent =
+            permanent || (status.as_u16() == 530 && !text.contains("is not a known peer"));
         return if permanent {
             all(Delivery::Dead, detail)
         } else {
@@ -710,10 +714,15 @@ fn json_response(status: StatusCode, value: Value) -> Response {
 }
 
 fn signature(req: &Request) -> Option<String> {
-    req.headers()
-        .get(SIGNATURE_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string)
+    // Some HTTP clients split a comma-separated header value into several header
+    // lines, so join them back together before parsing.
+    let parts: Vec<&str> = req
+        .headers()
+        .get_all(SIGNATURE_HEADER)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(","))
 }
 
 /// Transport `route`: signed POST from a peer, either one envelope or a batch (array).

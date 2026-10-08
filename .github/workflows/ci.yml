@@ -19,6 +19,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install TypeScript packages
+        run: npm ci
+
       - name: Install SpacetimeDB CLI
         run: |
           curl -sSf https://install.spacetimedb.com | sh -s -- --yes
@@ -28,6 +36,7 @@ jobs:
         run: |
           cargo fmt --all --check
           cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+          npm run typecheck
 
       - name: Resolve SpacetimeDB version
         id: ver
@@ -54,17 +63,24 @@ jobs:
           nohup scripts/dev-server.sh start > server.log 2>&1 &
           for i in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:3000/v1/ping && break; sleep 1; done
 
-      - name: Deploy shop + warehouse
-        run: scripts/deploy.sh
+      - name: "E2E: TypeScript shop (submodule) ⇄ Rust warehouse"
+        run: |
+          scripts/deploy.sh
+          scripts/e2e.sh
 
-      - name: End-to-end tests
-        run: scripts/e2e.sh
-
-      - name: Benchmark
+      - name: "Benchmark: TypeScript shop, route transport"
         run: |
           IDC_TRANSPORT=route spacetime publish warehouse -s local --env-only -y
           IDC_TRANSPORT=route spacetime publish shop -s local --env-only -y
+          spacetime call shop idc_kick -s local
           scripts/bench.sh 500 16
+
+      - name: "E2E: Rust shop ⇄ Rust warehouse"
+        run: |
+          spacetime delete shop -s local -y
+          spacetime delete warehouse -s local -y
+          SHOP_MODULE=shop-rs scripts/deploy.sh
+          scripts/e2e.sh
 
       - name: Server log
         if: failure()
