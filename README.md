@@ -94,10 +94,10 @@ sequenceDiagram
 | Auth | HMAC-SHA256 over `timestamp.body` with a shared secret; the secret never travels | SpacetimeDB identity token + known-identity table |
 | Setup | One env var (`IDC_SECRET`) on each side | **Pairing**, fully automatic (below) |
 | Batching | Up to 64 messages per request | One message per call |
-| Throughput* | ~300 orders/s Rust · ~230 TS · ~150 C# | ~47 orders/s Rust/TS · ~21 C# |
-| Round trip* | ~15–30 ms (C#: ~60–90 ms) | ~30 ms (C#: ~60 ms) |
+| Throughput* | ~270–300 orders/s Rust and C# (NativeAOT) · ~230 TS | ~43–49 orders/s |
+| Round trip* | ~15–30 ms | ~30 ms |
 
-<sub>*Local standalone 2.11.0 on a 2-vCPU VM. Each order is three cross-database messages. Run `scripts/bench.sh` yourself.</sub>
+<sub>*Local standalone 2.11.0 on a 2-vCPU VM. Each order is three cross-database messages. C# numbers are with NativeAOT-LLVM; the Mono JIT build is 2–3× slower (see [csharp/](csharp#performance-use-nativeaot-llvm)). Run `scripts/bench.sh` yourself.</sub>
 
 **Pairing** (reducer transport) automates the token and known-identity chore in both directions. Each database mints
 its own identity on the peer's host (`POST /v1/identity`), keeps the token privately, and introduces the identity to

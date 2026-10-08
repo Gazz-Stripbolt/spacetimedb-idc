@@ -28,8 +28,8 @@ pairing:
 ## Run it
 
 You need the [SpacetimeDB CLI](https://spacetimedb.com/install) 2.11+, Rust with `wasm32-unknown-unknown`, and
-`python3` for the tests. For the other variants you also need Node 22+ (TypeScript) or .NET 8 with the
-`wasi-experimental` workload (C#).
+`python3` for the tests. For the other variants you also need Node 22+ (TypeScript) or the .NET 10 SDK (C#, built with
+NativeAOT-LLVM).
 
 > **Why a custom local server?** Standalone refuses outbound HTTP from modules to loopback and private addresses
 > (SSRF protection), so two databases on one local server can't reach each other. [`scripts/dev-server.sh`](../scripts/dev-server.sh)

@@ -15,7 +15,8 @@ Source: [`Idc.cs`](Idc.cs) · Complete examples: [`demo/csharp/shop`](../demo/cs
      <Compile Include="path/to/Idc.cs" Link="Idc.cs" />
    </ItemGroup>
    ```
-   No extra packages: it only uses `SpacetimeDB.Runtime` and `System.Text.Json`.
+   No extra packages: it only uses `SpacetimeDB.Runtime` and `System.Text.Json`. Works with .NET 8 (Mono or
+   NativeAOT-LLVM) and .NET 10 (NativeAOT-LLVM). See [Performance](#performance-use-nativeaot-llvm).
 2. Wire it up in your `Module`:
    ```csharp
    [SpacetimeDB.Reducer(ReducerKind.Init)]
@@ -70,10 +71,21 @@ If your module already declares a `[SpacetimeDB.Env]` struct, move the four `IDC
 `IdcTx(Local Db, Timestamp)` works the same from reducers (`new IdcTx(ctx.Db, ctx.Timestamp)`), procedure transactions
 and handler transactions.
 
+## Performance: use NativeAOT-LLVM
+
+| Build | C# ⇄ C# round trip | Route transport | Reducer transport |
+|---|---|---|---|
+| **NativeAOT-LLVM** (.NET 10 on Linux; .NET 8 + `--native-aot` on Windows) | **~24–32 ms** | **~270 orders/s** | ~43 orders/s |
+| Mono JIT (`.NET 8`, `wasi-experimental` workload) | ~60–90 ms | ~154 orders/s | ~21 orders/s |
+
+With NativeAOT-LLVM, C# runs on par with Rust and TypeScript. The demo modules target `net10.0`, and the SpacetimeDB CLI
+then builds them with NativeAOT-LLVM automatically. The CLI only allows NativeAOT-LLVM on .NET 8 on Windows. On Linux it
+needs .NET 10 (`spacetime publish --native-aot` with .NET 8 on Linux is refused). `Idc.cs` works on all three build paths.
+
 ## Notes
 
-- About 2–3× slower than Rust/TS (Mono interpreting IL on wasm): roughly 60–90 ms round trips and ~150 orders/s
-  C# ⇄ C#. Fine for most cross-database traffic.
 - Ships a managed SHA-256/HMAC, because `System.Security.Cryptography` isn't available on wasi.
-- System.Text.Json reflection metadata is trimmed, so `JsonArray.Add("text")` throws at runtime. Use `JsonValue.Create(...)`.
+- System.Text.Json is trimmed and AOT-compiled, so `Idc.cs` sticks to `JsonNode` APIs that need no reflection, e.g.
+  `JsonValue.Create(...)` and `JsonArray.Add((JsonNode)obj)`, not the generic `Add<T>`. On the Mono path,
+  `JsonArray.Add("text")` throws `NoMetadataForType` at runtime.
 - `HttpMethod` clashes with `System.Net.Http.HttpMethod` under implicit usings. The file aliases it.

@@ -99,7 +99,7 @@ public static partial class Module
             var orders = new JsonArray();
             foreach (var o in tx.Db.Order.Iter().OrderByDescending(o => o.Id).Take(40))
             {
-                orders.Add(new JsonObject
+                orders.Add((JsonNode)new JsonObject
                 {
                     ["id"] = o.Id, ["sku"] = o.Sku, ["qty"] = o.Qty, ["status"] = o.Status, ["note"] = o.Note,
                     ["round_trip_ms"] = o.Settled is { } s ? (s.MicrosecondsSinceUnixEpoch - o.Placed.MicrosecondsSinceUnixEpoch) / 1000.0 : null,
@@ -108,7 +108,7 @@ public static partial class Module
             var mirror = new JsonArray();
             foreach (var s in tx.Db.StockMirror.Iter().OrderBy(s => s.Sku, StringComparer.Ordinal))
             {
-                mirror.Add(new JsonObject { ["sku"] = s.Sku, ["qty"] = s.Qty });
+                mirror.Add((JsonNode)new JsonObject { ["sku"] = s.Sku, ["qty"] = s.Qty });
             }
             return new JsonObject { ["orders"] = orders, ["stock_mirror"] = mirror, ["idc"] = IdcStateJson(new IdcTx(tx.Db, tx.Timestamp)) }.ToJsonString();
         });

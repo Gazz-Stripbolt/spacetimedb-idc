@@ -109,10 +109,10 @@ public static partial class Module
         {
             var stock = new JsonArray();
             foreach (var s in tx.Db.Stock.Iter().OrderBy(s => s.Sku, StringComparer.Ordinal))
-                stock.Add(new JsonObject { ["sku"] = s.Sku, ["qty"] = s.Qty });
+                stock.Add((JsonNode)new JsonObject { ["sku"] = s.Sku, ["qty"] = s.Qty });
             var reservations = new JsonArray();
             foreach (var r in tx.Db.Reservation.Iter().OrderByDescending(r => r.Id).Take(40))
-                reservations.Add(new JsonObject { ["id"] = r.Id, ["peer"] = r.Peer, ["order_id"] = r.OrderId, ["sku"] = r.Sku, ["qty"] = r.Qty });
+                reservations.Add((JsonNode)new JsonObject { ["id"] = r.Id, ["peer"] = r.Peer, ["order_id"] = r.OrderId, ["sku"] = r.Sku, ["qty"] = r.Qty });
             return new JsonObject { ["stock"] = stock, ["reservations"] = reservations, ["idc"] = IdcStateJson(new IdcTx(tx.Db, tx.Timestamp)) }.ToJsonString();
         });
         return new HttpResponse(200, HttpVersion.Http11,

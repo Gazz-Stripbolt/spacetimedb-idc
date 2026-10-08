@@ -51,9 +51,11 @@ cross-database goes over HTTP, started by a procedure or a handler.
 9. **Batching is the big throughput lever.** With one message per HTTP request, a 20-order burst settled one order every ~13 ms (55 → 304 ms).
    Batching up to 64 envelopes per request let delivery keep up with everything our load generator could produce
    (~900 msgs/s). Each envelope is still applied in its own transaction, so one bad message can't roll back its neighbours.
-10. **`spacetime publish --env-only` refuses `--module-path`.** Run it from a directory without a `spacetime.json`, with
+10. **Don't install the latest `wasm-opt`.** The CLI suggests installing binaryen's `wasm-opt`, but with binaryen
+    **version_133** every publish (Rust and C#) fails with *"Local module schema inspection failed"*. version_123 works.
+11. **`spacetime publish --env-only` refuses `--module-path`.** Run it from a directory without a `spacetime.json`, with
     only the changed variables set in the shell environment.
-11. **The handler RNG is timestamp-seeded.** Nothing here relies on randomness for security: authentication is the HMAC
+12. **The handler RNG is timestamp-seeded.** Nothing here relies on randomness for security: authentication is the HMAC
     secret or a server-issued token.
 
 ## Packaging it as a TypeScript submodule
@@ -95,8 +97,12 @@ on both transports. That's six pairings, all in CI.
   so forgetting it is a compile error, not silently dropped messages.
 - `IdcTx(Local Db, Timestamp)` bridges reducer, procedure-transaction and handler-transaction contexts, which all expose
   the same generated `Local`.
-- **Performance:** about 2–3× slower than Rust/TS (Mono interpreting IL on wasm). C# ⇄ C# route transport: ~154 orders/s,
-  60–90 ms round trips. Reducer transport: ~21 orders/s.
+- **Performance: use NativeAOT-LLVM.** The default Mono JIT build (`.NET 8` + `wasi-experimental`) interprets IL inside
+  wasm: ~60–90 ms round trips, ~154 orders/s C# ⇄ C# on the route transport, ~21/s on the reducer transport.
+  NativeAOT-LLVM compiles to native wasm: **~24–32 ms, ~270 orders/s and ~43/s**, on par with Rust. The CLI uses it
+  automatically for `net10.0` projects. For .NET 8 it's `--native-aot`, but only on Windows (`nativeaot_unsupported_on_host`
+  is macOS, or Linux + .NET 8).
+- **AOT trimming warnings:** the generic `JsonArray.Add<T>` is flagged (IL2026/IL3050), so use `Add((JsonNode)x)`.
 
 ## Security model
 
@@ -120,8 +126,8 @@ on both transports. That's six pairings, all in CI.
 | 20 concurrent orders, route, *before batching* | 55 → 304 ms (sequential) |
 | 1000 orders at ~300/s, route | every order settled within ~30 ms of the last one placed |
 | 500 orders, route, TS shop | 233 orders/s; all settled ~180 ms after the last one placed |
-| 500 orders, route, C# ⇄ C# | 154 orders/s |
-| 300 orders, reducer, C# ⇄ C# | 21 orders/s |
+| 500 orders, route, C# ⇄ C#, NativeAOT-LLVM | 269 orders/s (Mono JIT: 154) |
+| 300 orders, reducer, C# ⇄ C#, NativeAOT-LLVM | 43 orders/s (Mono JIT: 21) |
 | 300 orders at ~280/s, reducer | 47 orders/s sustained (one `/call` per message) |
 | Synchronous RPC (`quote`) | ~15 ms |
 

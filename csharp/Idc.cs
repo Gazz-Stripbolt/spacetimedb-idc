@@ -422,7 +422,7 @@ public static partial class Module
         var envelopes = new JsonArray();
         foreach (var c in batch)
         {
-            envelopes.Add(new JsonObject
+            envelopes.Add((JsonNode)new JsonObject
             {
                 ["id"] = c.MsgId, ["from"] = self, ["to"] = peer.Name, ["kind"] = c.Row.Kind,
                 ["payload"] = JsonNode.Parse(c.Row.Payload), ["sent_at"] = c.SentAt.MicrosecondsSinceUnixEpoch,
@@ -541,11 +541,11 @@ public static partial class Module
                 var env = IdcParseEnvelope(item);
                 id = env.Id;
                 var duplicate = ctx.WithTx(tx => IdcReceiveIn(new IdcTx(tx.Db, tx.Timestamp), env, "route"));
-                results.Add(new JsonObject { ["id"] = id, ["ok"] = true, ["duplicate"] = duplicate });
+                results.Add((JsonNode)new JsonObject { ["id"] = id, ["ok"] = true, ["duplicate"] = duplicate });
             }
             catch (Exception e)
             {
-                results.Add(new JsonObject { ["id"] = id, ["ok"] = false, ["error"] = e.Message });
+                results.Add((JsonNode)new JsonObject { ["id"] = id, ["ok"] = false, ["error"] = e.Message });
             }
         }
         if (single)
@@ -740,7 +740,7 @@ public static partial class Module
         var log = new JsonArray();
         foreach (var l in tx.Db.IdcLog.Iter().OrderByDescending(l => l.Id).Take(40))
         {
-            log.Add(new JsonObject
+            log.Add((JsonNode)new JsonObject
             {
                 ["id"] = l.Id, ["at_us"] = l.At.MicrosecondsSinceUnixEpoch, ["direction"] = l.Direction, ["peer"] = l.Peer,
                 ["kind"] = l.Kind, ["transport"] = l.Transport, ["msg_id"] = l.MsgId, ["event"] = l.Event,
