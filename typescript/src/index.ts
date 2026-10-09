@@ -235,8 +235,12 @@ function writeLog(
   ctx: IdcCtx,
   e: { direction: string; peer: string; kind: string; transport: string; msgId: string; event: string; detail?: string; latencyUs?: bigint }
 ): void {
-  const row = ctx.db.log.insert({ id: 0n, at: ctx.timestamp, detail: '', latencyUs: 0n, ...e });
-  if (row.id > LOG_KEEP) ctx.db.log.id.delete(row.id - LOG_KEEP);
+  ctx.db.log.insert({ id: 0n, at: ctx.timestamp, detail: '', latencyUs: 0n, ...e });
+  // Ids can skip (rolled-back inserts use them up), so trim by count, 100 rows at a time.
+  if (ctx.db.log.count() > LOG_KEEP + 100n) {
+    const ids = [...ctx.db.log.iter()].map((l) => l.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const id of ids.slice(0, ids.length - Number(LOG_KEEP))) ctx.db.log.id.delete(id);
+  }
 }
 
 function scheduleFlush(ctx: IdcCtx, atUs: bigint): void {

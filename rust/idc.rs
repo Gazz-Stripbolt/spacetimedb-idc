@@ -1083,7 +1083,7 @@ fn log(
     detail: &str,
     latency_us: i64,
 ) {
-    let row = ctx.db.idc_log().insert(IdcLog {
+    ctx.db.idc_log().insert(IdcLog {
         id: 0,
         at: ctx.timestamp,
         direction: direction.into(),
@@ -1095,8 +1095,13 @@ fn log(
         detail: detail.into(),
         latency_us,
     });
-    if row.id > LOG_KEEP {
-        ctx.db.idc_log().id().delete(row.id - LOG_KEEP);
+    // Ids can skip (rolled-back inserts use them up), so trim by count, 100 rows at a time.
+    if ctx.db.idc_log().count() > LOG_KEEP + 100 {
+        let mut ids: Vec<u64> = ctx.db.idc_log().iter().map(|l| l.id).collect();
+        ids.sort_unstable();
+        for id in &ids[..ids.len() - LOG_KEEP as usize] {
+            ctx.db.idc_log().id().delete(id);
+        }
     }
 }
 

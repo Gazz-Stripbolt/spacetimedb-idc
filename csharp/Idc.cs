@@ -275,12 +275,17 @@ public static partial class Module
 
     static void IdcWriteLog(IdcTx tx, string direction, string peer, string kind, string transport, string msgId, string evt, string detail = "", long latencyUs = 0)
     {
-        var row = tx.Db.IdcLog.Insert(new IdcLog
+        tx.Db.IdcLog.Insert(new IdcLog
         {
             At = tx.Timestamp, Direction = direction, Peer = peer, Kind = kind, Transport = transport,
             MsgId = msgId, Event = evt, Detail = detail, LatencyUs = latencyUs,
         });
-        if (row.Id > IdcLogKeep) tx.Db.IdcLog.Id.Delete(row.Id - IdcLogKeep);
+        // Ids can skip (rolled-back inserts use them up), so trim by count, 100 rows at a time.
+        if (tx.Db.IdcLog.Count > IdcLogKeep + 100)
+        {
+            var ids = tx.Db.IdcLog.Iter().Select(l => l.Id).OrderBy(id => id).ToList();
+            foreach (var id in ids.Take(ids.Count - (int)IdcLogKeep)) tx.Db.IdcLog.Id.Delete(id);
+        }
     }
 
     static void IdcScheduleFlush(IdcTx tx, Timestamp at)
