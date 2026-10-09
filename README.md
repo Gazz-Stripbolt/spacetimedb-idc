@@ -24,6 +24,11 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 
 ---
 
+> [!NOTE]
+> **A stopgap until native IDC ships.** SpacetimeDB has native inter-database communication on the way: async IDC is
+> planned first (the work is already landing upstream), and sync IDC later. When it arrives, prefer it. This repo
+> stays useful as a reference for outbox, retry and idempotency patterns.
+
 ## Where to go
 
 | I want… | Go to |
