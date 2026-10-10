@@ -43,6 +43,8 @@ const config = table(
     secret: t.string(),
     peers: t.string(),
     transport: t.string(),
+    /** `confirmed` (default) or `unsafe`. New column, so it needs a default for existing databases. */
+    durability: t.string().default('confirmed'),
   }
 );
 
@@ -147,6 +149,17 @@ export interface Config {
   peers: string;
   /** `route` or `reducer` */
   transport: string;
+  /**
+   * Optional. Unset or `confirmed`: wait for durability on both ends (safe, the default).
+   * `unsafe`: skip the waits. Faster, but **a crash can duplicate or lose messages**. Never use
+   * it with handoffs (`handoff.start` refuses).
+   */
+  durability?: string;
+}
+
+/** `durability: 'unsafe'`: skip the durability waits. See {@link Config.durability}. */
+export function durabilityUnsafe(ctx: IdcCtx): boolean {
+  return ctx.db.config.key.find(0)?.durability === 'unsafe';
 }
 
 const MAX_CLOCK_SKEW_US = 5n * 60n * 1_000_000n;
@@ -202,7 +215,13 @@ function getConfig(ctx: IdcCtx): Config {
  * adding idc to a database that's already live). Idempotent.
  */
 export function configure(ctx: IdcCtx, cfg: Config): void {
-  const row = { key: 0, ...cfg };
+  const row = { key: 0, ...cfg, durability: cfg.durability ?? 'confirmed' };
+  if (row.durability === 'unsafe') {
+    console.warn(
+      'idc: durability is unsafe. Messages are sent before our commits are durable and dropped ' +
+        "before the peer's are; a crash can duplicate or lose them"
+    );
+  }
   if (ctx.db.config.key.find(0)) ctx.db.config.key.update(row);
   else ctx.db.config.insert(row);
   if (!ctx.db.state.key.find(0)) {
@@ -406,6 +425,7 @@ function finish(ctx: IdcCtx, c: Claimed, result: Delivery): void {
  */
 function deliverDurably(ctx: IdcProcedureCtx, batch: Claimed[]): Delivery[] {
   const cfg = ctx.withTx((tx) => getConfig(tx));
+  if (cfg.durability === 'unsafe') return deliver(ctx, batch);
   const retryAll = (detail: string): Delivery[] => batch.map(() => ({ ok: false, dead: false, detail }));
   const self = selfBase(cfg, ctx.databaseIdentity);
   if (!self) return retryAll('no peers configured');

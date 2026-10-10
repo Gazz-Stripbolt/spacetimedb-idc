@@ -196,7 +196,7 @@ spacetime call shard-a step thrall 1 0                   # repeat until it cross
 
 ## What the tests prove
 
-[`scripts/handoff-e2e.sh`](../scripts/handoff-e2e.sh) runs 53 checks. Every scenario ends by checking the
+[`scripts/handoff-e2e.sh`](../scripts/handoff-e2e.sh) runs 56 checks. Every scenario ends by checking the
 invariant: each character is live on exactly one shard, nothing is locked or pending, and both outboxes are drained.
 
 - **Crossing** the border both ways, with data intact and the character playable on arrival.
@@ -211,6 +211,7 @@ invariant: each character is live on exactly one shard, nothing is locked or pen
   accept delivered but release stuck (the source has let go, and the release is queued), then healed.
 - **Replayed and forged messages** with fresh message ids: duplicate offer, release, cancel, accept and reject change
   nothing. A bad checksum is rejected. An offer the claimed source never sent stays pending, never live.
+- **Unsafe mode refused:** with `IDC_DURABILITY=unsafe`, `start` refuses, and works again once it's back to `confirmed`.
 - **Reducer transport** as well as the route transport.
 
 [`scripts/handoff-crash.sh`](../scripts/handoff-crash.sh) runs the shards on an on-disk server and `kill -9`s the whole

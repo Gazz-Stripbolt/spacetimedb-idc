@@ -43,7 +43,7 @@ scripts/dev-server.sh start &    # in-memory server on 127.0.0.1:3000
 scripts/deploy.sh                # Rust shop + Rust warehouse, pointed at each other
 open http://127.0.0.1:3000/v1/database/warehouse/route/   # live dashboard
 
-scripts/e2e.sh                   # 31 end-to-end checks
+scripts/e2e.sh                   # 32 end-to-end checks
 scripts/bench.sh 500 16          # throughput
 ```
 
@@ -95,6 +95,6 @@ the target, then live on the target. See [`docs/HANDOFF.md`](../docs/HANDOFF.md)
 ```bash
 scripts/deploy-shards.sh                                   # Rust ⇄ Rust (A_LANG / B_LANG: rust | csharp | typescript)
 open http://127.0.0.1:3000/v1/database/shard-a/route/      # live page (Rust shards)
-scripts/handoff-e2e.sh                                     # 53 checks: partitions, races, replays, rejections
+scripts/handoff-e2e.sh                                     # 56 checks: partitions, races, replays, rejections
 scripts/handoff-crash.sh 5 40                              # kill -9 the server mid-burst, 5 rounds
 ```

@@ -168,6 +168,9 @@ pub fn start_with_timeout(
     if entity.is_empty() {
         return Err("entity id is empty".into());
     }
+    if idc::durability_unsafe(ctx) {
+        return Err("handoffs need IDC_DURABILITY=confirmed: with `unsafe`, a crash can duplicate or lose the entity".into());
+    }
     let me = ctx.env.IDC_SELF();
     if peer == me {
         return Err("can't hand off to ourselves".into());
