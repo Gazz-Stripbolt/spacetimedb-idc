@@ -561,6 +561,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "shard"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "http",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2",
+ "spacetimedb",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
