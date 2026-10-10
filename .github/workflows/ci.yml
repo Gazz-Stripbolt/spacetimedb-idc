@@ -39,6 +39,7 @@ jobs:
         run: |
           dotnet build demo/csharp/shop -c Release
           dotnet build demo/csharp/warehouse -c Release
+          dotnet build demo/csharp/shard -c Release
 
   # Standalone blocks module HTTP to loopback, so the tests use a build with
   # SpacetimeDB's own `allow_loopback_http_for_tests` feature, cached per version.
@@ -120,6 +121,64 @@ jobs:
             spacetime call $db idc_kick -s local
           done
           scripts/bench.sh 300 16
+      - name: Server log
+        if: failure()
+        run: tail -n 200 server.log || true
+
+  # Handoffs between two world shards: the chaos suite on every language pairing, plus a real
+  # kill -9 crash test (on-disk server, killed mid-burst) on Rust ⇄ Rust.
+  handoff:
+    needs: dev-server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { a: rust, b: rust }
+          - { a: csharp, b: csharp }
+          - { a: typescript, b: typescript }
+          - { a: rust, b: csharp }
+          - { a: typescript, b: rust }
+          - { a: csharp, b: typescript }
+    name: handoff (${{ matrix.a }} ⇄ ${{ matrix.b }})
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust toolchain (wasm32)
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        if: matrix.a == 'csharp' || matrix.b == 'csharp'
+        with:
+          dotnet-version: 10.0.x
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache/restore@v4
+        with:
+          path: .dev-server/spacetimedb-standalone-${{ needs.dev-server.outputs.version }}
+          key: dev-server-${{ runner.os }}-${{ needs.dev-server.outputs.version }}
+          fail-on-cache-miss: true
+      - name: Start dev server
+        run: |
+          mkdir -p ~/.config/spacetime
+          nohup scripts/dev-server.sh start > server.log 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:3000/v1/ping && break; sleep 1; done
+      - name: Deploy shards
+        run: A_LANG=${{ matrix.a }} B_LANG=${{ matrix.b }} scripts/deploy-shards.sh
+      - name: Handoff chaos tests
+        run: scripts/handoff-e2e.sh
+      - name: Crash test (kill -9 mid-burst, restart from disk)
+        if: matrix.a == 'rust' && matrix.b == 'rust'
+        run: scripts/handoff-crash.sh 5 40
       - name: Server log
         if: failure()
         run: tail -n 200 server.log || true

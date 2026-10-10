@@ -84,3 +84,17 @@ spacetime sql shop "SELECT * FROM idc_log"    # what happened, with latencies
 - **Ordering:** 20 concurrent orders arrive in commit order.
 - **Reducer transport and re-pairing:** the full round trip through `/call`, and automatic re-pairing after a peer
   forgets us.
+
+## The handoff demo: two world shards
+
+[`rust/shard`](rust/shard/src/lib.rs), [`csharp/shard`](csharp/shard/Lib.cs) and
+[`typescript/shard`](typescript/shard/src/index.ts) are one strip of a game world, published twice. `shard-a` owns
+x 0–7 and `shard-b` owns x 8–15. Walking a character over the border hands it off: locked on the source, pending on
+the target, then live on the target. See [`docs/HANDOFF.md`](../docs/HANDOFF.md).
+
+```bash
+scripts/deploy-shards.sh                                   # Rust ⇄ Rust (A_LANG / B_LANG: rust | csharp | typescript)
+open http://127.0.0.1:3000/v1/database/shard-a/route/      # live page (Rust shards)
+scripts/handoff-e2e.sh                                     # 53 checks: partitions, races, replays, rejections
+scripts/handoff-crash.sh 5 40                              # kill -9 the server mid-burst, 5 rounds
+```

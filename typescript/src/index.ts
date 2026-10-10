@@ -13,6 +13,9 @@
  * - **At-least-once delivery, exactly-once effect:** retries with backoff,
  *   per-peer order, an idempotent inbox and dead letters.
  *
+ * Handoffs (moving an entity between databases safely) live in `spacetimedb-idc/handoff`;
+ * their tables and timeout job are part of this submodule.
+ *
  * Mount it in your module with `schema({ ..., idc })`, then see `README.md` for
  * the handful of wrappers a consumer adds. Submodules can't read environment
  * variables or own routes and lifecycle reducers, so the consumer passes config in
@@ -93,7 +96,32 @@ const pairJob = table(
 );
 const pruneJob = table({ name: 'prune_job' }, { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() });
 
-const spacetimedb = schema({ config, outbox, seen, knownPeer, peerToken, state, log, flushJob, pairJob, pruneJob });
+// Handoffs (see handoff.ts). One row per transfer on each side; no payloads, so it's public.
+const handoff = table(
+  { name: 'handoff', public: true },
+  {
+    id: t.string().primaryKey(),
+    entity: t.string().index(),
+    /** `out` (we're the source) or `in` (we're the target). */
+    role: t.string(),
+    peer: t.string(),
+    status: t.string(),
+    /** Lowercase hex SHA-256 of the data text, as sent. */
+    checksum: t.string(),
+    started: t.timestamp(),
+    updated: t.timestamp(),
+    detail: t.string(),
+  }
+);
+const handoffSeq = table({ name: 'handoff_seq' }, { key: t.u8().primaryKey(), next: t.u64() });
+const handoffTimeoutJob = table(
+  { name: 'handoff_timeout_job' },
+  { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt(), transferId: t.string() }
+);
+
+const spacetimedb = schema({
+  config, outbox, seen, knownPeer, peerToken, state, log, flushJob, pairJob, pruneJob, handoff, handoffSeq, handoffTimeoutJob,
+});
 export default spacetimedb;
 
 type S = typeof spacetimedb.schemaType;
@@ -170,6 +198,7 @@ export function configure(ctx: IdcCtx, cfg: Config): void {
   if (!ctx.db.state.key.find(0)) {
     ctx.db.state.insert({ key: 0, epoch: ctx.timestamp.microsSinceUnixEpoch.toString(16) });
   }
+  if (!ctx.db.handoffSeq.key.find(0)) ctx.db.handoffSeq.insert({ key: 0, next: 1n });
   if (ctx.db.pruneJob.count() === 0n) {
     ctx.db.pruneJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(3600n * 1_000_000n) });
   }
@@ -655,6 +684,39 @@ export function sql(ctx: IdcProcedureCtx, peerName: string, query: string): any 
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   return JSON.parse(text);
 }
+
+// ---------------------------------------------------------------------------
+// Handoff cancel + timeout (here because the scheduled reducer must be part of this
+// submodule; the rest of the state machine is in handoff.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask the target to drop an outgoing transfer. Only possible until we've seen its `accept`;
+ * after that the entity already belongs to the target. The entity stays locked until the
+ * target confirms, then your `returned` hook runs. Exported as `cancel` from `spacetimedb-idc/handoff`.
+ */
+export function cancelHandoff(ctx: IdcCtx, transferId: string, reason: string): void {
+  const h = ctx.db.handoff.id.find(transferId);
+  if (!h || h.role !== 'out') throw new SenderError(`no outgoing transfer \`${transferId}\``);
+  switch (h.status) {
+    case 'offered':
+      send(ctx, h.peer, 'handoff.cancel', { id: h.id, reason });
+      ctx.db.handoff.id.update({ ...h, status: 'cancelling', detail: reason, updated: ctx.timestamp });
+      return;
+    case 'cancelling':
+      return;
+    case 'released':
+      throw new SenderError('too late: the target already has it');
+    default:
+      throw new SenderError(`transfer is already ${h.status}`);
+  }
+}
+
+/** Fires when an offer's timeout is up. A no-op unless the target still hasn't answered. */
+export const handoffTimeout = spacetimedb.reducer({ onSchedule: handoffTimeoutJob }, { arg: handoffTimeoutJob.rowType }, (ctx, { arg }) => {
+  if (!ctx.sender.isEqual(ctx.databaseIdentity)) throw new SenderError('scheduled only');
+  if (ctx.db.handoff.id.find(arg.transferId)?.status === 'offered') cancelHandoff(ctx, arg.transferId, 'timed out');
+});
 
 // ---------------------------------------------------------------------------
 // Housekeeping and introspection

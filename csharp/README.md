@@ -71,6 +71,13 @@ If your module already declares a `[SpacetimeDB.Env]` struct, move the four `IDC
 `IdcTx(Local Db, Timestamp)` works the same from reducers (`new IdcTx(ctx.Db, ctx.Timestamp)`), procedure transactions
 and handler transactions.
 
+## Handoffs
+
+[`Handoff.cs`](Handoff.cs) sits on top of `Idc.cs` and moves an entity (say, a character) to another database with
+no window where it's duplicated or lost. Add it next to `Idc.cs`, call `HandoffInit(ctx)` in `Init`, route
+`HandoffOnIdcMessage(tx, msg)` first in `OnIdcMessage`, and implement the six `Handoff*` partial hooks. See
+[`docs/HANDOFF.md`](../docs/HANDOFF.md) and the [shard demo](../demo/csharp/shard/Lib.cs).
+
 ## Performance: use NativeAOT-LLVM
 
 | Build | C# ⇄ C# round trip | Route transport | Reducer transport |

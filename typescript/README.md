@@ -94,6 +94,25 @@ Tables (under your namespace): `idc.config`, `idc.outbox`, `idc.seen`, `idc.know
 (all private), `idc.log` (public: metadata only), plus three schedule tables. The scheduled `idc.flush` / `idc.pair`
 procedures run without any wiring.
 
+## Handoffs
+
+`spacetimedb-idc/handoff` moves an entity (say, a character) to another database with no window where it's duplicated
+or lost. Its tables (`idc.handoff`, public, plus a sequence and a timeout schedule) are part of the idc submodule, so
+there's nothing extra to mount:
+
+```typescript
+import * as handoff from 'spacetimedb-idc/handoff';
+
+function onMessage(tx: Ctx, msg: idc.Message) {
+  if (handoff.onIdcMessage(tx, msg, { scope: (c: Ctx) => c.as.idc, hooks })) return;   // hooks: handoff.Hooks<Ctx>
+  // ...
+}
+handoff.start(ctx.as.idc, 'shard-b', name, data);    // lock + offer, in this transaction
+handoff.isLocked(ctx.as.idc, name);                   // refuse moves/trades while in transit
+```
+
+See [`docs/HANDOFF.md`](../docs/HANDOFF.md) and the [shard demo](../demo/typescript/shard/src/index.ts).
+
 ## Notes
 
 - `ctx.http.fetch` in TypeScript throws on HTTP 530, which is how `/call` reports a reducer error, so the reason is

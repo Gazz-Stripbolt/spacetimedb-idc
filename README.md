@@ -37,6 +37,7 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 | **C#**: add IDC to a C# module | [`csharp/`](csharp): `Idc.cs`, one drop-in file |
 | **TypeScript**: add IDC to a TS module, as a **submodule** | [`typescript/`](typescript): the `spacetimedb-idc` submodule |
 | **See it working**: two databases talking | [`demo/`](demo): shop ⇄ warehouse in Rust (plus TS and C# variants) |
+| **Move a character between shards** (or anything that must never be duplicated or lost) | [`docs/HANDOFF.md`](docs/HANDOFF.md): handoffs, all three languages |
 | **The wire format**, to port it or debug it | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
 | **Everything we learned**: limits, gotchas, numbers | [`docs/FINDINGS.md`](docs/FINDINGS.md) |
 
@@ -113,6 +114,34 @@ forgets us.
 **RPC:** a signed synchronous call from a procedure to a peer's route, e.g. `quote(sku)` returns the warehouse's answer
 in ~15 ms. **SQL pulls:** `/sql` from a procedure, the pre-HTTP-handler way.
 
+## Handoffs: moving ownership between databases
+
+Some things have to live in exactly one database at a time: a character walking from one world shard to the next, an
+item going to an auction house, a tenant changing region. "Copy to B, then delete on A" can't be made safe, even with
+synchronous calls: crash between the two steps and you get a duplicate or a loss, and there's no transaction that
+spans two databases.
+
+**Handoffs** ([`rust/handoff.rs`](rust/handoff.rs), [`csharp/Handoff.cs`](csharp/Handoff.cs),
+[`spacetimedb-idc/handoff`](typescript/src/handoff.ts)) are an ownership state machine on top of idc:
+
+```
+source:  start() locks it ── offer ──▶ target: validate, import as pending
+source:  deletes its copy ◀── accept ──
+                          ── release ─▶ target: activate (now live)
+```
+
+Every step is one local transaction plus a durable, idempotent message, so a crash anywhere just resumes. Rejections,
+cancels and timeouts unlock the entity on the source. **At most one live copy, never zero.** A crossing takes ~15–35 ms.
+The chaos suite (partitions between every step, races, replays, forged messages) passes on every language pairing,
+and a `kill -9` crash test runs in CI.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/handoff-dark.png">
+  <img alt="Two-shard demo: one character locked at the border while its pending copy waits on the other shard" src="docs/handoff-light.png" width="860">
+</picture>
+
+Details, API for all three languages, and the failure table: [`docs/HANDOFF.md`](docs/HANDOFF.md).
+
 ## Configuration (all languages)
 
 Four environment variables, controlled by the database owner:
@@ -141,15 +170,17 @@ data isn't touched. Then run `spacetime call <db> idc_kick` once, because `init`
 ## Repository layout
 
 ```
-rust/idc.rs                    Rust drop-in
-csharp/Idc.cs                  C# drop-in
-typescript/                    TypeScript submodule (package: spacetimedb-idc)
-demo/rust/{shop,warehouse}     the reference demo
-demo/typescript/shop           the shop on the TS submodule
-demo/csharp/{shop,warehouse}   the demo in C#
-demo/dashboard/                live dashboard served by the Rust modules
-scripts/                       dev-server.sh · deploy.sh · e2e.sh · bench.sh
-docs/                          PROTOCOL.md · FINDINGS.md · screenshots
+rust/idc.rs, rust/handoff.rs         Rust drop-ins
+csharp/Idc.cs, csharp/Handoff.cs     C# drop-ins
+typescript/                          TypeScript submodule (spacetimedb-idc, spacetimedb-idc/handoff)
+demo/rust/{shop,warehouse}           the reference demo
+demo/typescript/shop                 the shop on the TS submodule
+demo/csharp/{shop,warehouse}         the demo in C#
+demo/{rust,csharp,typescript}/shard  the handoff demo: two world shards
+demo/dashboard/                      live dashboards served by the Rust modules
+scripts/                             dev-server.sh · deploy.sh · e2e.sh · bench.sh
+                                     deploy-shards.sh · handoff-e2e.sh · handoff-crash.sh
+docs/                                PROTOCOL.md · FINDINGS.md · HANDOFF.md · screenshots
 ```
 
 ## Credits

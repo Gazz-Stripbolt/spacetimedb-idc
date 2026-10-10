@@ -1,1 +1,222 @@
-<!doctype html><title>stub</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDC Handoffs</title>
+<style>
+  :root { --bg:#f5f4f0; --card:#fff; --fg:#1c1c1f; --muted:#6c6c72; --line:#e3e1db; --accent:#e8730c; --ok:#1f8a4c; --bad:#c2372f; --warn:#b7791f; --chip:#efeee9; --a:#2f6fd6; --b:#8a4fd1; --tile:#faf9f6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141416; --card:#1e1e22; --fg:#ececf0; --muted:#9c9ca4; --line:#2e2e34; --chip:#2a2a30; --tile:#232328; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  header { max-width:1180px; margin:0 auto; padding:18px 16px 6px; display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; }
+  h1 { font-size:20px; margin:0; }
+  .sub { color:var(--muted); font-size:13px; }
+  main { max-width:1180px; margin:0 auto; padding:10px 16px 32px; display:grid; gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
+  .card h2 { margin:0 0 8px; font-size:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chip { font-size:11px; font-weight:500; background:var(--chip); border-radius:99px; padding:1px 8px; color:var(--muted); }
+  .chip.ok { color:var(--ok); } .chip.warn { color:var(--warn); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  input, select { font:inherit; padding:5px 8px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+  button { font:inherit; padding:6px 12px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:default; }
+  .world { overflow-x:auto; }
+  .halves { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; min-width:560px; }
+  .half h3 { margin:0 0 6px; font-size:13px; display:flex; gap:6px; align-items:center; }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .grid { display:grid; grid-template-columns:repeat(8, minmax(0,1fr)); gap:3px; }
+  .cell { aspect-ratio:1; background:var(--tile); border:1px solid var(--line); border-radius:5px; display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:2px; padding:2px; cursor:pointer; }
+  .cell.border-w { box-shadow: inset 3px 0 0 var(--accent); } .cell.border-e { box-shadow: inset -3px 0 0 var(--accent); }
+  .tok { font-size:11px; font-weight:600; line-height:1; padding:4px 5px; border-radius:99px; color:#fff; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; border:2px solid transparent; }
+  .tok.a { background:var(--a); } .tok.b { background:var(--b); }
+  .tok.locked { background:transparent; color:var(--fg); border:2px dashed var(--warn); animation:pulse 1s ease-in-out infinite; }
+  .tok.pending { background:transparent; color:var(--muted); border:2px dotted var(--muted); }
+  .tok.sel { outline:2px solid var(--accent); outline-offset:1px; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; font-size:12px; color:var(--muted); align-items:center; }
+  .legend .tok { cursor:default; animation:none; }
+  .pad { display:grid; grid-template-columns:repeat(3, 34px); gap:4px; }
+  .pad button { padding:6px 0; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:860px) { .two { grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td.wrap { white-space:normal; }
+  .num { font-variant-numeric:tabular-nums; text-align:right; }
+  .st-active, .st-released { color:var(--ok); } .st-rejected, .st-cancelled { color:var(--bad); } .st-offered, .st-accepted, .st-cancelling { color:var(--warn); }
+  #timeline { font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height:280px; overflow:auto; }
+  #timeline div { padding:2px 0; border-bottom:1px dashed var(--line); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ev-delivered, .ev-applied { color:var(--ok); } .ev-retry { color:var(--warn); } .ev-dead { color:var(--bad); } .ev-duplicate { color:var(--muted); }
+  #msg { min-height:1.4em; font-size:13px; color:var(--muted); }
+  #msg.err { color:var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Handoffs between shards</h1>
+  <span class="sub">Two SpacetimeDB databases, each owning half of the world. Walk a character over the orange border and watch it change owner: locked, offered, accepted, released, live. Never on both, never on neither.</span>
+</header>
+<main>
+  <section class="card">
+    <div class="controls">
+      <input id="name" placeholder="name" maxlength="24" size="10">
+      <select id="spawnOn"></select>
+      <button id="spawn">Spawn</button>
+      <span class="sub" style="margin-left:8px">Selected: <b id="selName">none</b></span>
+      <div class="pad" aria-label="move">
+        <span></span><button class="ghost" data-d="0,-1">↑</button><span></span>
+        <button class="ghost" data-d="-1,0">←</button><button class="ghost" data-d="0,1">↓</button><button class="ghost" data-d="1,0">→</button>
+      </div>
+      <button class="ghost" id="transfer">Transfer</button>
+      <button class="ghost" id="cancel">Cancel transfer</button>
+      <button class="ghost" id="full">Make east shard full</button>
+    </div>
+    <div id="msg"></div>
+  </section>
+  <section class="card world">
+    <div class="halves" id="world"></div>
+    <div class="legend">
+      <span><span class="tok a">live</span> on its shard</span>
+      <span><span class="tok locked">locked</span> leaving (source still owns it)</span>
+      <span><span class="tok pending">pending</span> arriving (not playable until released)</span>
+      <span>Arrow keys move the selected character.</span>
+    </div>
+  </section>
+  <div class="two" id="handoffs"></div>
+  <section class="card">
+    <h2>Message timeline <span class="chip">both shards, newest first</span></h2>
+    <div id="timeline"></div>
+  </section>
+</main>
+<script>
+const CONFIG = /*CONFIG*/{};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const url = (base) => { try { const u = new URL(base, location.href); return u.host === location.host ? u.pathname : u.href; } catch { return base; } };
+const dbs = CONFIG.dbs.map((d) => ({ ...d, base: url(d.base) }));
+let states = [];
+let selected = null;
+
+async function call(db, fn, args) {
+  const r = await fetch(`${db.base}/call/${fn}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(args) });
+  const text = await r.text();
+  if (!r.ok) throw new Error(text || r.status);
+  return text;
+}
+function say(text, err) { const m = document.querySelector("#msg"); m.textContent = text; m.className = err ? "err" : ""; }
+const act = (p) => p.then(() => say("")).catch((e) => say(e.message, true)).finally(refresh);
+
+// The shard that currently owns a character: where it's live or locked (not pending).
+function owner(name) {
+  for (let i = 0; i < dbs.length; i++) {
+    const c = states[i]?.characters.find((c) => c.name === name);
+    if (c && c.state === "live") return dbs[i];
+  }
+  return null;
+}
+
+document.querySelector("#spawnOn").innerHTML = dbs.map((d, i) => `<option value="${i}">${esc(d.name)}</option>`).join("");
+document.querySelector("#spawn").onclick = () => {
+  const name = document.querySelector("#name").value.trim();
+  if (!name) return say("type a name first", true);
+  selected = name;
+  act(call(dbs[+document.querySelector("#spawnOn").value], "spawn", [name]));
+};
+function move(dx, dy) {
+  const db = selected && owner(selected);
+  if (!db) return say(selected ? `${selected} isn't playable right now` : "click a character first", true);
+  act(call(db, "step", [selected, dx, dy]));
+}
+document.querySelectorAll(".pad button").forEach((b) => b.onclick = () => move(...b.dataset.d.split(",").map(Number)));
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (d) { e.preventDefault(); move(...d); }
+});
+document.querySelector("#transfer").onclick = () => {
+  const db = selected && owner(selected);
+  if (!db) return say("click a live character first", true);
+  act(call(db, "transfer", [selected, 0]));
+};
+document.querySelector("#cancel").onclick = () => {
+  const db = selected && owner(selected);
+  if (!db) return say("click a character that's leaving", true);
+  act(call(db, "cancel_transfer", [selected]));
+};
+document.querySelector("#full").onclick = (e) => {
+  const east = dbs.findIndex((_, i) => states[i]?.shard.lo > 0);
+  if (east < 0) return;
+  const full = states[east].shard.capacity === 0;
+  act(call(dbs[east], "set_capacity", [full ? 50 : 0]));
+};
+document.querySelector("#world").addEventListener("click", (e) => {
+  const t = e.target.closest(".tok");
+  if (t) { selected = t.dataset.name; refresh(); }
+});
+
+const table = (rows, cols) => rows.length
+  ? `<table><tr>${cols.map(([h]) => `<th>${h}</th>`).join("")}</tr>${rows.map((r) => `<tr>${cols.map(([, f, cls]) => `<td class="${cls || ""}">${f(r)}</td>`).join("")}</tr>`).join("")}</table>`
+  : `<div class="sub">no transfers yet</div>`;
+
+function renderWorld() {
+  const order = dbs.map((d, i) => ({ d, s: states[i], i })).filter((x) => x.s).sort((p, q) => p.s.shard.lo - q.s.shard.lo);
+  document.querySelector("#world").innerHTML = order.map(({ d, s, i }) => {
+    const { lo, hi, height } = s.shard;
+    const side = lo === 0 ? "a" : "b";
+    let cells = "";
+    for (let y = 0; y < height; y++) for (let x = lo; x < hi; x++) {
+      const here = s.characters.filter((c) => c.x === x && c.y === y);
+      const edge = side === "a" && x === hi - 1 ? "border-e" : side === "b" && x === lo ? "border-w" : "";
+      cells += `<div class="cell ${edge}">${here.map((c) => {
+        const cls = c.state === "pending" ? "pending" : c.locked ? "locked" : side;
+        return `<span class="tok ${cls} ${c.name === selected ? "sel" : ""}" data-name="${esc(c.name)}" title="${esc(`${c.name} · hp ${c.hp} · ${c.gold} gold · ${c.bag.join(", ")}${c.note ? " · " + c.note : ""}`)}">${esc(c.name)}</span>`;
+      }).join("")}</div>`;
+    }
+    const idc = s.idc;
+    return `<div class="half"><h3><span class="dot" style="background:var(--${side})"></span>${esc(d.name)}
+      <span class="chip">x ${lo}–${hi - 1}</span>
+      <span class="chip ${idc.outbox_pending ? "warn" : ""}">outbox ${idc.outbox_pending}</span>
+      ${s.shard.capacity === 0 ? `<span class="chip warn">full</span>` : ""}</h3><div class="grid">${cells}</div></div>`;
+  }).join("");
+  const sel = selected && states.flatMap((s) => s?.characters ?? []).find((c) => c.name === selected && c.state === "live");
+  document.querySelector("#selName").textContent = selected ? `${selected}${sel?.note ? ` (${sel.note})` : ""}` : "none";
+}
+
+function renderHandoffs() {
+  document.querySelector("#handoffs").innerHTML = dbs.map((d, i) => {
+    const s = states[i];
+    if (!s) return `<section class="card"><h2>${esc(d.name)}</h2><div class="sub">unreachable</div></section>`;
+    return `<section class="card"><h2>${esc(d.name)} <span class="chip">transfers</span></h2>` + table(s.handoffs.slice(0, 12), [
+      ["entity", (h) => esc(h.entity)],
+      ["", (h) => h.role === "out" ? `→ ${esc(h.peer)}` : `← ${esc(h.peer)}`],
+      ["status", (h) => `<span class="st-${esc(h.status)}">${esc(h.status)}</span>`],
+      ["took", (h) => ["offered", "accepted", "cancelling"].includes(h.status) ? "…" : `${h.ms.toFixed(1)} ms`, "num"],
+      ["detail", (h) => esc(h.detail), "wrap"],
+    ]) + `</section>`;
+  }).join("");
+}
+
+function renderTimeline() {
+  const events = states.flatMap((s, i) => s ? s.idc.log.map((l) => ({ ...l, db: dbs[i].name })) : []);
+  events.sort((a, b) => b.at_us - a.at_us || b.id - a.id);
+  document.querySelector("#timeline").innerHTML = events.slice(0, 80).map((l) => {
+    const t = new Date(l.at_us / 1000).toISOString().slice(11, 23);
+    const arrow = l.direction === "out" ? `${l.db} → ${l.peer}` : `${l.db} ← ${l.peer}`;
+    const lat = l.latency_us ? ` · ${(l.latency_us / 1000).toFixed(1)} ms` : "";
+    return `<div class="ev-${esc(l.event)}" title="${esc(l.detail)}">${t}  ${esc(arrow)}  ${esc(l.kind)}  ${esc(l.event)}${lat}</div>`;
+  }).join("");
+}
+
+async function refresh() {
+  states = await Promise.all(dbs.map((d) => fetch(`${d.base}/route/api/state`).then((r) => r.json()).catch(() => null)));
+  renderWorld();
+  renderHandoffs();
+  renderTimeline();
+}
+refresh();
+setInterval(refresh, 500);
+</script>
+</body>
+</html>

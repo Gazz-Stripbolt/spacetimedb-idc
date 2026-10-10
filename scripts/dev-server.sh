@@ -9,6 +9,7 @@
 #
 #   scripts/dev-server.sh build    # ~20-40 min the first time
 #   scripts/dev-server.sh start    # in-memory server on 127.0.0.1:3000
+#   PERSIST=1 LISTEN=127.0.0.1:3100 scripts/dev-server.sh start   # on-disk data that survives a restart
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV="$ROOT/.dev-server"
@@ -28,8 +29,14 @@ case "${1:-start}" in
   start)
     [[ -x $BIN ]] || { echo "run '$0 build' first" >&2; exit 1; }
     # Reuse the CLI's JWT keys so `spacetime publish/call/sql` are authorized as usual.
-    rm -rf "$DEV/data"; mkdir -p "$DEV/data"
-    exec "$BIN" start --in-memory --data-dir "$DEV/data" --listen-addr "${LISTEN:-127.0.0.1:3000}" \
+    LISTEN=${LISTEN:-127.0.0.1:3000}
+    if [[ ${PERSIST:-} == 1 ]]; then
+      DATA="$DEV/data-${LISTEN##*:}"; MODE=()          # kept across restarts (crash tests)
+    else
+      DATA="$DEV/data"; MODE=(--in-memory); rm -rf "$DATA"
+    fi
+    mkdir -p "$DATA"
+    exec "$BIN" start "${MODE[@]}" --data-dir "$DATA" --listen-addr "$LISTEN" \
       --jwt-key-dir "${SPACETIME_CONFIG_DIR:-$HOME/.config/spacetime}" --non-interactive
     ;;
   *) echo "usage: $0 build|start" >&2; exit 2 ;;
