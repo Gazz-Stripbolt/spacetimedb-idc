@@ -205,7 +205,7 @@ invariant: each character is live on exactly one shard, nothing is locked or pen
 - **Rejection:** name taken, shard full. The source unlocks and the player sees why.
 - **Timeout during a partition:** the cancel waits behind the undelivered offer, the target imports and then discards,
   and the character stays home.
-- **Cancel vs. accept race:** 20 transfers, each cancelled 5–100 ms after it starts. Some cross, some stay, and
+- **Cancel vs. accept race:** 20 transfers, each cancelled 15–300 ms after it starts. Some cross, some stay, and
   every one ends live in exactly one place.
 - **Partitions between every step:** offer delivered but accept stuck (one locked + one pending, zero live), then
   accept delivered but release stuck (the source has let go, and the release is queued), then healed.
@@ -214,12 +214,18 @@ invariant: each character is live on exactly one shard, nothing is locked or pen
 - **Reducer transport** as well as the route transport.
 
 [`scripts/handoff-crash.sh`](../scripts/handoff-crash.sh) runs the shards on an on-disk server and `kill -9`s the whole
-server 10–200 ms into a burst of 40 simultaneous transfers in each direction, then restarts it. After every round,
-every character is live on exactly one shard. Depending on where the kill lands, all transfers complete, all are
-cancelled, or there's a mix.
+server partway into a burst of 40 simultaneous transfers in each direction, then restarts it from disk. With
+`SLOW_FSYNC_MS=200`, every fsync is delayed (via `strace`) to imitate a slow disk. After every round, every character
+must be live on exactly one shard. Depending on where the kill lands, all transfers complete, all are cancelled, or
+there's a mix.
 
-CI runs the suite on six language pairings (each language with itself, and every mixed pair), plus the crash test on
-Rust ⇄ Rust. Locally, all nine directed pairings pass.
+This test earned its keep. The first version of the protocol passed everything else, then **duplicated characters in
+CI** and **lost them all** under slow fsync. SpacetimeDB acknowledges a commit before it's durable, so a crash rolled
+back transactions whose messages had already been delivered. idc now waits for durability on both ends (see
+[FINDINGS](FINDINGS.md), gotcha 13), and the crash test holds in both modes.
+
+CI runs the suite on six language pairings (each language with itself, and every mixed pair), plus both crash tests
+on Rust ⇄ Rust. Locally, all nine directed pairings pass.
 
 ## Limits
 

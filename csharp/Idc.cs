@@ -9,6 +9,11 @@
 //
 // Then call IdcInit(ctx) from your Init reducer and add IdcRoutes(...) to your [HttpRouter].
 // Config comes from four env vars: IDC_SELF, IDC_SECRET, IDC_PEERS, IDC_TRANSPORT.
+//
+// Durable before visible: SpacetimeDB acknowledges a commit before it's on disk, so a crash can
+// roll back a transaction whose message was already sent. Delivery waits until our own commits
+// are durable before sending, and until the peer's are before calling it done (both via
+// /sql?confirmed=true).
 
 #pragma warning disable STDB_UNSTABLE
 #nullable enable
@@ -353,7 +358,7 @@ public static partial class Module
         {
             var batch = ctx.WithTx(tx => IdcClaimBatch(new IdcTx(tx.Db, tx.Timestamp), max));
             if (batch.Count == 0) break;
-            var results = IdcDeliver(ctx, batch);
+            var results = IdcDeliverDurably(ctx, batch);
             ctx.WithTx(tx =>
             {
                 for (var j = 0; j < batch.Count; j++) IdcFinish(new IdcTx(tx.Db, tx.Timestamp), batch[j], results[j]);
@@ -416,6 +421,55 @@ public static partial class Module
         }
     }
 
+    /// <summary>
+    /// Deliver a batch, but only once the transactions that queued it are durable here, and only
+    /// call it delivered once the peer's transaction that applied it is durable there. Without this,
+    /// a crash right after a commit can roll back a transaction whose message the peer already saw
+    /// (we sent it), or one the peer said it applied (we dropped it from the outbox).
+    /// </summary>
+    static List<IdcDelivery> IdcDeliverDurably(ProcedureContext ctx, List<IdcClaimed> batch)
+    {
+        var peersRaw = ctx.WithTx(_ => IdcEnv.IDC_PEERS);
+        List<IdcDelivery> RetryAll(string e) => batch.Select(_ => new IdcDelivery(false, false, false, e)).ToList();
+        if (IdcSelfBase(peersRaw, ProcedureContextBase.Identity) is not { } selfBase) return RetryAll("no peers configured");
+        if (IdcConfirmDurable(ctx, selfBase) is { } notYet) return RetryAll($"our commit isn't durable yet: {notYet}");
+        var results = IdcDeliver(ctx, batch);
+        if (results.Any(r => r.Ok))
+        {
+            var peer = IdcPeers(peersRaw).FirstOrDefault(p => p.Name == batch[0].Row.Peer);
+            var error = peer.Name is null ? $"unknown peer `{batch[0].Row.Peer}`" : IdcConfirmDurable(ctx, peer.Base);
+            // The peer applied it but may still lose it in a crash: send again (its inbox dedupes).
+            if (error is not null)
+                results = results.Select(r => r.Ok ? new IdcDelivery(false, false, false, $"peer's commit isn't durable yet: {error}") : r).ToList();
+        }
+        return results;
+    }
+
+    /// <summary>Our own https://host/v1/database/&lt;identity&gt;, assuming we live on the same host as our first peer.</summary>
+    static string? IdcSelfBase(string peersRaw, Identity me) =>
+        IdcPeers(peersRaw).FirstOrDefault() is { Name: not null } p ? $"{p.Host}/v1/database/{me.ToString().ToLowerInvariant()}" : null;
+
+    /// <summary>
+    /// Wait until every transaction committed so far on the database at `baseUrl` is on disk.
+    /// /sql?confirmed=true only answers once the snapshot it read from is durable. Returns null when
+    /// durable, otherwise the error.
+    /// </summary>
+    static string? IdcConfirmDurable(ProcedureContext ctx, string baseUrl) =>
+        ctx.Http.Send(new HttpRequest
+        {
+            Uri = $"{baseUrl}/sql?confirmed=true", Method = HttpMethod.Post, Timeout = IdcHttpTimeout,
+            Headers = new() { new("content-type", "text/plain") },
+            Body = HttpBody.FromString("SELECT table_id FROM st_table WHERE table_id = 0"),
+        }).Match(
+            response =>
+            {
+                if (response.StatusCode is >= 200 and < 300) return null;
+                var text = response.Body.ToStringUtf8Lossy();
+                return $"HTTP {response.StatusCode}: {(text.Length > 200 ? text[..200] : text)}";
+            },
+            error => error.Message);
+
+    /// <summary>Deliver a batch (all for the same peer). Returns one outcome per message.</summary>
     static List<IdcDelivery> IdcDeliver(ProcedureContext ctx, List<IdcClaimed> batch)
     {
         var peerName = batch[0].Row.Peer;

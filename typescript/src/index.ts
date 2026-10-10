@@ -12,6 +12,10 @@
  *   (`/call/idc_receive` as an identity the peer knows, with automatic pairing).
  * - **At-least-once delivery, exactly-once effect:** retries with backoff,
  *   per-peer order, an idempotent inbox and dead letters.
+ * - **Durable before visible:** SpacetimeDB acknowledges a commit before it's on disk, so a
+ *   crash can roll back a transaction whose message was already sent. Delivery waits until our
+ *   own commits are durable before sending, and until the peer's are before calling it done
+ *   (both via `/sql?confirmed=true`).
  *
  * Handoffs (moving an entity between databases safely) live in `spacetimedb-idc/handoff`;
  * their tables and timeout job are part of this submodule.
@@ -173,6 +177,12 @@ export function parsePeers(raw: string): Peer[] {
 }
 
 const hostOf = (p: Peer) => (p.base.includes('/v1/') ? p.base.slice(0, p.base.indexOf('/v1/')) : p.base);
+
+/** Our own `https://host/v1/database/<identity>`, assuming we live on the same host as our first peer. */
+function selfBase(cfg: Config, me: Identity): string | undefined {
+  const peer = parsePeers(cfg.peers)[0];
+  return peer && `${hostOf(peer)}/v1/database/${me.toHexString()}`;
+}
 
 function findPeer(cfg: Config, name: string): Peer {
   const p = parsePeers(cfg.peers).find((x) => x.name === name);
@@ -339,7 +349,7 @@ export const flush = spacetimedb.procedure({ onSchedule: flushJob }, { arg: flus
   for (let i = 0; i < 200; i++) {
     const batch = ctx.withTx((tx) => claimBatch(tx, max));
     if (batch.length === 0) break;
-    const results = deliver(ctx, batch);
+    const results = deliverDurably(ctx, batch);
     ctx.withTx((tx) => batch.forEach((c, j) => finish(tx, c, results[j])));
   }
   ctx.withTx((tx) => {
@@ -385,6 +395,52 @@ function finish(ctx: IdcCtx, c: Claimed, result: Delivery): void {
       lastError: result.detail,
     });
     writeLog(ctx, { ...base, event: 'retry', detail: `attempt ${attempts} failed, retrying in ${backoffMs} ms: ${result.detail}` });
+  }
+}
+
+/**
+ * Deliver a batch, but only once the transactions that queued it are durable here, and only
+ * call it delivered once the peer's transaction that applied it is durable there. Without this,
+ * a crash right after a commit can roll back a transaction whose message the peer already saw
+ * (we sent it), or one the peer said it applied (we dropped it from the outbox).
+ */
+function deliverDurably(ctx: IdcProcedureCtx, batch: Claimed[]): Delivery[] {
+  const cfg = ctx.withTx((tx) => getConfig(tx));
+  const retryAll = (detail: string): Delivery[] => batch.map(() => ({ ok: false, dead: false, detail }));
+  const self = selfBase(cfg, ctx.databaseIdentity);
+  if (!self) return retryAll('no peers configured');
+  const mine = confirmDurable(ctx, self);
+  if (mine) return retryAll(`our commit isn't durable yet: ${mine}`);
+  const results = deliver(ctx, batch);
+  if (results.some((r) => r.ok)) {
+    let theirs: string | undefined;
+    try {
+      theirs = confirmDurable(ctx, findPeer(cfg, batch[0].row.peer).base);
+    } catch (e) {
+      theirs = String((e as Error).message);
+    }
+    // The peer applied it but may still lose it in a crash: send again (its inbox dedupes).
+    if (theirs) return results.map((r) => (r.ok ? { ok: false, dead: false, detail: `peer's commit isn't durable yet: ${theirs}` } : r));
+  }
+  return results;
+}
+
+/**
+ * Wait until every transaction committed so far on the database at `base` is on disk.
+ * `/sql?confirmed=true` only answers once the snapshot it read from is durable.
+ * Returns undefined when confirmed, otherwise the error.
+ */
+function confirmDurable(ctx: IdcProcedureCtx, base: string): string | undefined {
+  try {
+    const res = ctx.http.fetch(`${base}/sql?confirmed=true`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'SELECT table_id FROM st_table WHERE table_id = 0',
+      timeout: HTTP_TIMEOUT,
+    });
+    return res.ok ? undefined : `HTTP ${res.status}: ${res.text().slice(0, 200)}`;
+  } catch (e) {
+    return String(e);
   }
 }
 

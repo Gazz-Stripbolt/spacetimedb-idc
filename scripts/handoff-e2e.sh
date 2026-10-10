@@ -143,10 +143,10 @@ wait_for "target imports, then discards on the cancel; illidan stays on shard-a"
 check "the timeout reason reaches the player" True "$(q "'timed out' in ch(a, 'illidan')['note']")"
 invariant illidan anduin
 
-echo "Cancel vs. accept race (20 transfers, each cancelled 5-100 ms later)"
+echo "Cancel vs. accept race (20 transfers, each cancelled 15-300 ms later)"
 NAMES=()
 for i in $(seq 20); do NAMES+=("racer$i"); call a spawn "[\"racer$i\"]" >/dev/null; done
-for i in $(seq 20); do (call a transfer "[\"racer$i\", 0]" >/dev/null; sleep "0.$(printf %03d $((i * 5)))"; call a cancel_transfer "[\"racer$i\"]" >/dev/null) & done; wait
+for i in $(seq 20); do (call a transfer "[\"racer$i\", 0]" >/dev/null; sleep "0.$(printf %03d $((i * 15)))"; call a cancel_transfer "[\"racer$i\"]" >/dev/null) & done; wait
 invariant "${NAMES[@]}"
 echo "    outcomes: $(q "sorted({s for s in [ho(a, 'racer%d' % i)['status'] for i in range(1, 21)]})") ($(q "sum(1 for i in range(1, 21) if ch(b, 'racer%d' % i))") crossed, $(q "sum(1 for i in range(1, 21) if ch(a, 'racer%d' % i))") stayed)"
 call a transfer '["thrall", 0]' >/dev/null

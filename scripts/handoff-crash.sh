@@ -6,6 +6,8 @@
 #
 # Starts its own on-disk dev server on PORT (default 3100), so it doesn't disturb the
 # in-memory one the other tests use. Shard languages come from A_LANG / B_LANG.
+# SLOW_FSYNC_MS=200 delays every fsync by that much (via strace), like a slow disk, which widens
+# the window where a commit is acknowledged but not yet on disk.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROUNDS=${1:-5}
@@ -16,12 +18,20 @@ LOG=$(mktemp)
 server=""
 
 start() {
-  PERSIST=1 LISTEN=127.0.0.1:$PORT scripts/dev-server.sh start >>"$LOG" 2>&1 &
+  if [[ -n ${SLOW_FSYNC_MS:-} ]]; then
+    PERSIST=1 LISTEN=127.0.0.1:$PORT strace -f -qq -o /dev/null -e trace=fsync,fdatasync \
+      -e "inject=fsync,fdatasync:delay_enter=${SLOW_FSYNC_MS}ms" scripts/dev-server.sh start >>"$LOG" 2>&1 &
+  else
+    PERSIST=1 LISTEN=127.0.0.1:$PORT scripts/dev-server.sh start >>"$LOG" 2>&1 &
+  fi
   server=$!
   for _ in $(seq 120); do curl -sf -o /dev/null "$HOST/v1/ping" && return 0; sleep 0.25; done
   echo "server didn't come up"; tail -20 "$LOG"; exit 1
 }
-crash() { kill -9 "$server" 2>/dev/null; wait "$server" 2>/dev/null; }
+crash() {
+  pkill -9 -f -- "--data-dir $PWD/.dev-server/data-$PORT" 2>/dev/null
+  kill -9 "$server" 2>/dev/null; wait "$server" 2>/dev/null
+}
 trap crash EXIT
 
 rm -rf ".dev-server/data-$PORT"
@@ -52,11 +62,12 @@ PY
 for i in $(seq 0 $((N - 1))); do call shard-a spawn "[\"c$i\"]" >/dev/null; done
 fail=0
 for round in $(seq "$ROUNDS"); do
-  # Everyone heads for the other shard at once; the server dies a random 10-200 ms in.
+  # Everyone heads for the other shard at once; the server dies a random KILL_MIN_MS-KILL_MAX_MS in.
   for i in $(seq 0 $((N - 1))); do
     for s in shard-a shard-b; do call $s transfer "[\"c$i\", 0]" >/dev/null & done
   done
-  delay="0.$(printf %03d $((RANDOM % 191 + 10)))"
+  ms=$((RANDOM % (${KILL_MAX_MS:-200} - ${KILL_MIN_MS:-10} + 1) + ${KILL_MIN_MS:-10}))
+  delay=$(printf '%d.%03d' $((ms / 1000)) $((ms % 1000)))
   sleep "$delay"
   crash
   wait 2>/dev/null

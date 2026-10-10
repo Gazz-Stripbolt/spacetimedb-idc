@@ -91,6 +91,9 @@ sequenceDiagram
   to 60 s, each peer's messages stay in order, and anything the peer permanently refuses becomes a dead letter.
 - **Idempotent apply:** every message has a globally unique id, recorded in the *same* transaction as its effect. So
   at-least-once delivery has an exactly-once effect.
+- **Durable before visible:** SpacetimeDB acknowledges a commit before it's on disk, so a crash can undo a transaction
+  whose message already went out. idc sends only once its own commits are durable, and drops a message only once the
+  peer's commit is durable (both via `/sql?confirmed=true`). A `kill -9` crash test checks this in CI.
 
 ## Two transports, plus RPC and SQL
 
@@ -100,10 +103,10 @@ sequenceDiagram
 | Auth | HMAC-SHA256 over `timestamp.body` with a shared secret; the secret never travels | SpacetimeDB identity token + known-identity table |
 | Setup | One env var (`IDC_SECRET`) on each side | **Pairing**, fully automatic (below) |
 | Batching | Up to 64 messages per request | One message per call |
-| Throughput* | ~270–300 orders/s Rust and C# (NativeAOT) · ~230 TS | ~43–49 orders/s |
-| Round trip* | ~15–30 ms | ~30 ms |
+| Throughput* | ~245 orders/s Rust (~270–300 before the durability waits) | ~18 orders/s (was ~43–49) |
+| Round trip* | ~35–40 ms (was ~15–30) | ~55 ms (was ~30) |
 
-<sub>*Local standalone 2.11.0 on a 2-vCPU VM. Each order is three cross-database messages. C# numbers are with NativeAOT-LLVM; the Mono JIT build is 2–3× slower (see [csharp/](csharp#performance-use-nativeaot-llvm)). Run `scripts/bench.sh` yourself.</sub>
+<sub>*Local standalone 2.11.0 on a 2-vCPU VM. Each order is three cross-database messages. The durability waits add two confirmed `/sql` calls per hop; the older numbers are from before them and still hold for C# and TS relative to Rust. C# numbers are with NativeAOT-LLVM; the Mono JIT build is 2–3× slower (see [csharp/](csharp#performance-use-nativeaot-llvm)). Run `scripts/bench.sh` yourself.</sub>
 
 **Pairing** (reducer transport) automates the token and known-identity chore in both directions. Each database mints
 its own identity on the peer's host (`POST /v1/identity`), keeps the token privately, and introduces the identity to
@@ -131,7 +134,7 @@ source:  deletes its copy ◀── accept ──
 ```
 
 Every step is one local transaction plus a durable, idempotent message, so a crash anywhere just resumes. Rejections,
-cancels and timeouts unlock the entity on the source. **At most one live copy, never zero.** A crossing takes ~15–35 ms.
+cancels and timeouts unlock the entity on the source. **At most one live copy, never zero.** A crossing takes ~40 ms (Rust).
 The chaos suite (partitions between every step, races, replays, forged messages) passes on every language pairing,
 and a `kill -9` crash test runs in CI.
 

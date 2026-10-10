@@ -125,12 +125,12 @@ jobs:
         if: failure()
         run: tail -n 200 server.log || true
 
-  # Handoffs between two world shards: the chaos suite on every language pairing, plus a real
-  # kill -9 crash test (on-disk server, killed mid-burst) on Rust ⇄ Rust.
+  # Handoffs between two world shards: the chaos suite on every language pairing, plus real
+  # kill -9 crash tests (on-disk server, killed mid-burst, normal and slow disk) on Rust ⇄ Rust.
   handoff:
     needs: dev-server
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -179,6 +179,12 @@ jobs:
       - name: Crash test (kill -9 mid-burst, restart from disk)
         if: matrix.a == 'rust' && matrix.b == 'rust'
         run: scripts/handoff-crash.sh 5 40
+      # A slow disk widens the window where a commit is acknowledged but not yet durable.
+      - name: Crash test on a slow disk (every fsync delayed 200 ms)
+        if: matrix.a == 'rust' && matrix.b == 'rust'
+        run: |
+          sudo apt-get install -y -qq strace >/dev/null
+          SLOW_FSYNC_MS=200 KILL_MIN_MS=200 KILL_MAX_MS=1500 scripts/handoff-crash.sh 5 40
       - name: Server log
         if: failure()
         run: tail -n 200 server.log || true
