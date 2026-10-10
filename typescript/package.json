@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts", "./handoff": "./src/handoff.ts" },
   "files": ["src"],
   "keywords": ["spacetimedb", "submodule", "inter-database-communication", "outbox"],
   "repository": { "type": "git", "url": "https://github.com/Gazz-Stripbolt/spacetimedb-idc", "directory": "typescript" },

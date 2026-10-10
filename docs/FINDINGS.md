@@ -104,6 +104,32 @@ on both transports. That's six pairings, all in CI.
   is macOS, or Linux + .NET 8).
 - **AOT trimming warnings:** the generic `JsonArray.Add<T>` is flagged (IL2026/IL3050), so use `Add((JsonNode)x)`.
 
+## Handoffs (moving ownership between databases)
+
+- **Sync IDC doesn't make transfers safe; an ownership state machine does.** HTTP from a procedure runs outside any
+  transaction, so "copy to B, then delete on A" always has a crash window. Locking on the source, importing as pending
+  on the target, and releasing only after the target confirms closes it, provided every message is durable and
+  idempotent. Details: [HANDOFF.md](HANDOFF.md).
+- **Per-peer ordering makes the cancel race deterministic.** A cancel is queued behind its offer, so the target has
+  always seen the offer first, and only holds a pending copy it can drop. Without ordering, a tombstone for "cancel
+  before offer" covers the gap.
+- **Idempotency has to be per transfer, not just per message.** idc dedupes message ids, but a replay with a fresh id
+  (or a resend after a crash) must also be a no-op, so every handler checks the transfer's status first.
+- **Protocol handlers must never fail.** A failed receive dead-letters the message on the sender, and a dead `release`
+  would strand an entity with zero live copies. Refusals are messages, and hook code that can fail runs in `validate`,
+  before anything is written.
+- **Crash recovery is bounded by the outbox lease.** After `kill -9`, messages that were mid-delivery stay leased for
+  60 s, so transfers with a shorter timeout get cancelled rather than completed. Still exactly one live copy, just
+  slower. Across 8 crash rounds (40 transfers each way, killed 10–200 ms in), every character ended live in exactly one
+  place.
+- **Checksum the exact text, not re-serialized JSON.** C#'s `JsonNode.ToJsonString()` escapes non-ASCII by default and
+  key order differs between serializers, so `data` travels as a string and the checksum covers those bytes.
+- **TS submodules: scheduled reducers must be exported from the submodule's entry module.** Splitting the handoff code
+  into a second file that registered its own schedule table created an import cycle that crashed at startup depending
+  on import order. So the tables and the timeout reducer live in `index.ts`, and `handoff.ts` imports one way only.
+- **`ctx.identity()` / `ctx.Identity` are deprecated in 2.11.** Use `database_identity()` / `DatabaseIdentity` for the
+  "scheduler only" check on scheduled reducers.
+
 ## Security model
 
 - **Route transport:** HMAC-SHA256 over `"<micros>.<body>"` with a mesh-wide secret from an env var, ±5 minute window,

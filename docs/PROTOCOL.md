@@ -49,3 +49,24 @@ Sender rules: 2xx = delivered. 401/404/408/429/5xx/transport errors = retry with
 ## RPC
 
 Signed `POST <peer>/route<path>` with `{ "from": self, "payload": … }`. The response body is the answer, as JSON.
+
+## Handoffs
+
+Ordinary idc messages (any transport) with `kind` = `handoff.<action>`. See [HANDOFF.md](HANDOFF.md) for the state
+machine.
+
+| Kind | Direction | Payload |
+|---|---|---|
+| `handoff.offer` | source → target | `{ "id", "entity", "data": "<JSON text>", "checksum" }` |
+| `handoff.accept` | target → source | `{ "id", "checksum" }` (echoes the offer's checksum) |
+| `handoff.reject` | target → source | `{ "id", "reason" }` |
+| `handoff.release` | source → target | `{ "id" }` |
+| `handoff.cancel` | source → target | `{ "id", "reason" }` |
+| `handoff.cancelled` | target → source | `{ "id" }` |
+
+- `id` is the transfer id, `<source IDC_SELF>-<source idc epoch>-<sequence>`, unique across restarts and wipes.
+- `data` is a **string** holding the entity as JSON, so every language checksums the same bytes. `checksum` is the
+  lowercase hex SHA-256 of `data`'s UTF-8 bytes.
+- Receivers must be idempotent per transfer id (not just per message id), and must never fail a well-formed handoff
+  message. Refusals are `reject` messages. Unknown ids and messages that don't fit the current status are ignored.
+- A `cancel` for an id the target has never seen leaves a `cancelled` tombstone, and is still answered with `cancelled`.

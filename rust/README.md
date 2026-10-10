@@ -73,3 +73,10 @@ If your module already has a `#[spacetimedb::env]` struct, move the four `IDC_*`
 
 Tables: `idc_outbox`, `idc_seen`, `idc_known_peer`, `idc_peer_token`, `idc_state` (private), `idc_log` (public:
 metadata only), plus three schedule tables.
+
+## Handoffs
+
+[`handoff.rs`](handoff.rs) sits on top of `idc.rs` and moves an entity (say, a character) to another database with
+no window where it's duplicated or lost. Copy it next to `idc.rs`, add `pub mod handoff;`, call `handoff::init(ctx)`
+in `init`, route `handoff::on_idc_message` first in your `on_idc_message`, and implement the six `handoff_*` hooks.
+See [`docs/HANDOFF.md`](../docs/HANDOFF.md) and the [shard demo](../demo/rust/shard/src/lib.rs).
