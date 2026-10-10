@@ -8,6 +8,7 @@ use spacetimedb::Table;
 use spacetimedb::http::{Body, HandlerContext, Request, Response, Router, handler};
 
 const PAGE: &str = include_str!("dashboard.html");
+const SHARDS_PAGE: &str = include_str!("shards.html");
 
 fn base_path(req: &Request) -> String {
     let path = req.uri().path();
@@ -17,8 +18,17 @@ fn base_path(req: &Request) -> String {
 
 #[handler]
 fn page(ctx: &mut HandlerContext, req: Request) -> Response {
+    render(ctx, &req, PAGE)
+}
+
+#[handler]
+fn shards_page(ctx: &mut HandlerContext, req: Request) -> Response {
+    render(ctx, &req, SHARDS_PAGE)
+}
+
+fn render(ctx: &mut HandlerContext, req: &Request, html: &str) -> Response {
     let me = ctx.env.IDC_SELF();
-    let mut dbs = vec![json!({ "name": me, "base": base_path(&req) })];
+    let mut dbs = vec![json!({ "name": me, "base": base_path(req) })];
     for p in idc::peers(&ctx.env.IDC_PEERS()) {
         dbs.push(json!({ "name": p.name, "base": p.base }));
     }
@@ -31,7 +41,7 @@ fn page(ctx: &mut HandlerContext, req: Request) -> Response {
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
         .header(header::CACHE_CONTROL, "no-cache")
-        .body(Body::from_bytes(PAGE.replace("/*CONFIG*/{}", &config)))
+        .body(Body::from_bytes(html.replace("/*CONFIG*/{}", &config)))
         .unwrap()
 }
 
@@ -71,6 +81,13 @@ pub fn state_response(ctx: &mut HandlerContext, app: Value) -> Response {
         .unwrap()
 }
 
+#[allow(dead_code)]
 pub fn router() -> Router {
     Router::new().get("", page).get("/", page)
+}
+
+/// The two-shard handoff demo page.
+#[allow(dead_code)]
+pub fn shards_router() -> Router {
+    Router::new().get("", shards_page).get("/", shards_page)
 }
