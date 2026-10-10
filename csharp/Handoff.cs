@@ -126,6 +126,8 @@ public static partial class Module
     public static string HandoffStart(IdcTx tx, string peer, string entity, JsonNode data, TimeSpan? timeout = null)
     {
         if (string.IsNullOrEmpty(entity)) throw new Exception("entity id is empty");
+        if (IdcDurabilityUnsafe)
+            throw new Exception("handoffs need IDC_DURABILITY=confirmed: with `unsafe`, a crash can duplicate or lose the entity");
         var me = IdcEnv.IDC_SELF;
         if (peer == me) throw new Exception("can't hand off to ourselves");
         if (!IdcPeers(IdcEnv.IDC_PEERS).Any(p => p.Name == peer)) throw new Exception($"unknown peer `{peer}`");

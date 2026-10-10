@@ -66,7 +66,8 @@ cross-database goes over HTTP, started by a procedure or a handler.
     ones. The fix: before sending, the flush procedure calls its own `/sql?confirmed=true` (a read of `st_table`,
     which works in any language without auth), and it only drops a delivered message after the same call against the
     peer succeeds. On an in-memory server the wait is a no-op HTTP hop. Worth an upstream API: "wait until my commits are
-    durable" from a procedure, or confirmed-only reads inside `with_tx`.
+    durable" from a procedure, or confirmed-only reads inside `with_tx`. `IDC_DURABILITY=unsafe` turns the waits off
+    for meshes that can tolerate lost or phantom messages.
 
 ## Packaging it as a TypeScript submodule
 
@@ -90,7 +91,7 @@ TypeScript-specific gotchas:
 - **u64 columns are `bigint`.** Convert them before `JSON.stringify`. Timestamps are `microsSinceUnixEpoch: bigint`.
 - **No WebCrypto in the module runtime,** so HMAC comes from `@noble/hashes` (pure JS, bundled by `spacetime build`).
 
-Interop: every shop language (TS, Rust, C#) passes the full 31-check suite against every warehouse language (Rust, C#),
+Interop: every shop language (TS, Rust, C#) passes the full idc suite (now 32 checks) against every warehouse language (Rust, C#),
 on both transports. That's six pairings, all in CI.
 
 ## The C# port

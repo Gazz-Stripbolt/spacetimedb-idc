@@ -195,6 +195,16 @@ wait_for "and is dropped by a cancel" "not ch(b, 'ghost')"
 check "unknown handoff kind is refused (dead letter, not applied)" True "$(inject b shard-a handoff.bogus '{"id":"x"}' | grep -c 422 | sed 's/1/True/')"
 check "a handoff message without an id is refused" True "$(inject b shard-a handoff.release '{}' | grep -c 422 | sed 's/1/True/')"
 
+echo "Handoffs refuse IDC_DURABILITY=unsafe"
+(cd /tmp && IDC_DURABILITY=unsafe spacetime publish "$SHARD_A" -s "$SERVER" --env-only -y >/dev/null 2>&1)
+spacetime call "$SHARD_A" idc_kick -s "$SERVER" >/dev/null 2>&1
+call a spawn '["garrosh"]' >/dev/null
+check "transfer refused in unsafe mode" 1 "$(call_body a transfer '["garrosh", 0]' | grep -c 'IDC_DURABILITY=confirmed')"
+(cd /tmp && IDC_DURABILITY=confirmed spacetime publish "$SHARD_A" -s "$SERVER" --env-only -y >/dev/null 2>&1)
+spacetime call "$SHARD_A" idc_kick -s "$SERVER" >/dev/null 2>&1
+check "and allowed again with confirmed" 200 "$(call a transfer '["garrosh", 0]')"
+wait_for "garrosh crosses" "ch(b, 'garrosh') and ch(b, 'garrosh')['state'] == 'live'"
+
 echo "Reducer transport"
 for x in a b; do
   (cd /tmp && IDC_TRANSPORT=reducer spacetime publish "$(db $x)" -s "$SERVER" --env-only -y >/dev/null 2>&1)
@@ -204,7 +214,7 @@ check "transport is reducer" "reducer reducer" "$(q "a['idc']['transport'] + ' '
 call a spawn '["velen"]' >/dev/null
 call a transfer '["velen", 0]' >/dev/null
 wait_for "velen crosses over reducer calls" "ch(b, 'velen') and ch(b, 'velen')['state'] == 'live' and not ch(a, 'velen')" 30
-invariant velen thrall jaina
+invariant velen thrall jaina garrosh
 
 echo
 echo "$pass passed, $fail failed"

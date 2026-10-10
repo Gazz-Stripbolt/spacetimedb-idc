@@ -46,6 +46,7 @@ const spacetimedb = schema(
       IDC_SECRET: t.string(),
       IDC_PEERS: t.string(),
       IDC_TRANSPORT: t.enum('IdcTransport', ['route', 'reducer']),
+      IDC_DURABILITY: t.option(t.enum('IdcDurability', ['confirmed', 'unsafe'])),
     },
   }
 );
@@ -58,11 +59,12 @@ export default spacetimedb;
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>;
 type Character = NonNullable<ReturnType<Ctx['db']['character']['name']['find']>>;
 
-const idcConfig = (ctx: { env: { IDC_SELF: string; IDC_SECRET: string; IDC_PEERS: string; IDC_TRANSPORT: string } }) => ({
+const idcConfig = (ctx: { env: { IDC_SELF: string; IDC_SECRET: string; IDC_PEERS: string; IDC_TRANSPORT: string; IDC_DURABILITY?: string } }) => ({
   self: ctx.env.IDC_SELF,
   secret: ctx.env.IDC_SECRET,
   peers: ctx.env.IDC_PEERS,
   transport: ctx.env.IDC_TRANSPORT,
+  durability: ctx.env.IDC_DURABILITY,
 });
 
 export const init = spacetimedb.init((ctx) => {

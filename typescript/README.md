@@ -76,6 +76,8 @@ IDC_PEERS=warehouse=https://maincloud.spacetimedb.com/v1/database/my-warehouse \
 spacetime publish my-shop
 ```
 
+Optional fifth: declare `IDC_DURABILITY: t.option(t.enum('IdcDurability', ['confirmed', 'unsafe']))` and pass `durability: ctx.env.IDC_DURABILITY` to `configure`. ⚠️ `unsafe` skips the durability waits: faster, but **a crash can duplicate or lose messages**, and handoffs refuse to start.
+
 ## API
 
 | Function | Use it from | What it does |

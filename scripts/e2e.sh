@@ -113,6 +113,18 @@ wait_for "all 20 confirmed" shop "sum(1 for o in s['orders'] if o['id'] >= $FIRS
 check "warehouse saw them in order" True "$(q warehouse "(lambda ids: ids == sorted(ids))([r['order_id'] for r in reversed(s['reservations']) if $FIRST <= r['order_id'] < 999999])")"
 echo "    round trips (ms): $(q shop "sorted(round(o['round_trip_ms'],1) for o in s['orders'] if o['id'] >= $FIRST and o['round_trip_ms'])")"
 
+echo "Durability mode: unsafe (opt-in, skips the durability waits)"
+for x in shop warehouse; do
+  (cd /tmp && IDC_DURABILITY=unsafe spacetime publish "$(db $x)" -s "$SERVER" --env-only -y >/dev/null 2>&1)
+  spacetime call "$(db $x)" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here
+done
+call shop place_order '["sprocket", 1]' >/dev/null
+wait_for "orders still confirm with IDC_DURABILITY=unsafe" shop "s['orders'][0]['status'] == 'confirmed' and s['idc']['outbox_pending'] == 0" 10
+for x in shop warehouse; do
+  (cd /tmp && IDC_DURABILITY=confirmed spacetime publish "$(db $x)" -s "$SERVER" --env-only -y >/dev/null 2>&1)
+  spacetime call "$(db $x)" idc_kick -s "$SERVER" >/dev/null 2>&1
+done
+
 echo "Reducer transport (identity token + known-identity check)"
 IDC_TRANSPORT=reducer spacetime publish "$WAREHOUSE" -s "$SERVER" --env-only -y >/dev/null 2>&1
 spacetime call "$WAREHOUSE" idc_kick -s "$SERVER" >/dev/null 2>&1   # TS submodules re-read config from env here

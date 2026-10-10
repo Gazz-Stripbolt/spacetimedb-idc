@@ -94,6 +94,9 @@ export function start(ctx: IdcCtx, peer: string, entity: string, data: unknown, 
   if (!entity) throw new SenderError('entity id is empty');
   const cfg = ctx.db.config.key.find(0);
   if (!cfg) throw new SenderError('idc is not configured');
+  if (cfg.durability === 'unsafe') {
+    throw new SenderError('handoffs need IDC_DURABILITY=confirmed: with `unsafe`, a crash can duplicate or lose the entity');
+  }
   if (peer === cfg.self) throw new SenderError("can't hand off to ourselves");
   if (!parsePeers(cfg.peers).some((p) => p.name === peer)) throw new SenderError(`unknown peer \`${peer}\``);
   if (isLocked(ctx, entity)) throw new SenderError(`\`${entity}\` is already in transit`);

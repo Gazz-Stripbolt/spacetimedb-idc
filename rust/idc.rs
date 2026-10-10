@@ -57,6 +57,16 @@ pub struct Env {
     /// `route` (signed HTTP handler) or `reducer` (identity token + `/call`).
     #[env(values("route", "reducer"))]
     pub IDC_TRANSPORT: String,
+    /// Optional. Unset or `confirmed`: wait for durability on both ends (safe, the default).
+    /// `unsafe`: skip the waits. Faster, but **a crash can duplicate or lose messages**. Never
+    /// use it with handoffs (`handoff::start` refuses).
+    #[env(values("confirmed", "unsafe"))]
+    pub IDC_DURABILITY: Option<String>,
+}
+
+/// `IDC_DURABILITY=unsafe`: skip the durability waits. See [`Env::IDC_DURABILITY`].
+pub fn durability_unsafe(ctx: &ReducerContext) -> bool {
+    ctx.env.IDC_DURABILITY().as_deref() == Some("unsafe")
 }
 
 /// How long a signed request stays valid. Replays inside the window are caught by the inbox.
@@ -305,6 +315,12 @@ const SIGNATURE_HEADER: &str = "x-idc-signature";
 /// Adding idc to a database that's already published? `init` won't run again on update,
 /// so call the `idc_kick` reducer once after publishing. It does the same setup.
 pub fn init(ctx: &ReducerContext) {
+    if durability_unsafe(ctx) {
+        log::warn!(
+            "idc: IDC_DURABILITY=unsafe. Messages are sent before our commits are durable and dropped \
+             before the peer's are; a crash can duplicate or lose them"
+        );
+    }
     if ctx.db.idc_state().key().find(0).is_none() {
         let epoch = format!("{:x}", ctx.timestamp.to_micros_since_unix_epoch());
         ctx.db.idc_state().insert(IdcState { key: 0, epoch });
@@ -560,7 +576,16 @@ fn finish(ctx: &ReducerContext, claimed: &Claimed, result: &Delivery) {
 /// a crash right after a commit can roll back a transaction whose message the peer already saw
 /// (we sent it), or one the peer said it applied (we dropped it from the outbox).
 fn deliver_durably(ctx: &mut ProcedureContext, batch: &[Claimed]) -> Vec<Delivery> {
-    let (raw_peers, me) = ctx.with_tx(|tx| (tx.env.IDC_PEERS(), tx.database_identity()));
+    let (raw_peers, me, unsafe_mode) = ctx.with_tx(|tx| {
+        (
+            tx.env.IDC_PEERS(),
+            tx.database_identity(),
+            durability_unsafe(tx),
+        )
+    });
+    if unsafe_mode {
+        return deliver(ctx, batch);
+    }
     let retry_all = |e: String| batch.iter().map(|_| Delivery::Retry(e.clone())).collect();
     match self_base(&raw_peers, me) {
         Some(base) => {

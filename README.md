@@ -147,7 +147,7 @@ Details, API for all three languages, and the failure table: [`docs/HANDOFF.md`]
 
 ## Configuration (all languages)
 
-Four environment variables, controlled by the database owner:
+Four environment variables (plus one optional), controlled by the database owner:
 
 | Variable | Example |
 |---|---|
@@ -155,6 +155,13 @@ Four environment variables, controlled by the database owner:
 | `IDC_PEERS` | `warehouse=https://maincloud.spacetimedb.com/v1/database/my-warehouse` (comma-separated) |
 | `IDC_SECRET` | `openssl rand -hex 32`, the same value on every peer |
 | `IDC_TRANSPORT` | `route` or `reducer` |
+| `IDC_DURABILITY` *(optional)* | `confirmed` (the default when unset) or `unsafe` |
+
+> [!WARNING]
+> **`IDC_DURABILITY=unsafe` trades safety for speed.** It skips the durability waits, so messages go out before our
+> commits are on disk, and are dropped before the peer's are. After a crash, a message can be **delivered for a
+> transaction that no longer exists, or lost** even though it was acknowledged. Use it only when every message is
+> harmless to duplicate or lose (cache refreshes, telemetry). Handoffs refuse to start in this mode.
 
 Adding IDC to a database that's already live is a normal publish: the new tables are added automatically and existing
 data isn't touched. Then run `spacetime call <db> idc_kick` once, because `init` doesn't re-run on updates.

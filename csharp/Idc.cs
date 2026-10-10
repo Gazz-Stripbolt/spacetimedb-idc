@@ -8,12 +8,14 @@
 //     public static partial void OnIdcMessage(IdcTx tx, IdcMessage msg) { ... }
 //
 // Then call IdcInit(ctx) from your Init reducer and add IdcRoutes(...) to your [HttpRouter].
-// Config comes from four env vars: IDC_SELF, IDC_SECRET, IDC_PEERS, IDC_TRANSPORT.
+// Config comes from four env vars: IDC_SELF, IDC_SECRET, IDC_PEERS, IDC_TRANSPORT, plus the
+// optional IDC_DURABILITY (see below).
 //
 // Durable before visible: SpacetimeDB acknowledges a commit before it's on disk, so a crash can
 // roll back a transaction whose message was already sent. Delivery waits until our own commits
 // are durable before sending, and until the peer's are before calling it done (both via
-// /sql?confirmed=true).
+// /sql?confirmed=true). IDC_DURABILITY=unsafe skips both waits: faster, but a crash can duplicate
+// or lose messages. Never use it with handoffs (HandoffStart refuses).
 
 #pragma warning disable STDB_UNSTABLE
 #nullable enable
@@ -51,7 +53,17 @@ public static partial class Module
         public string IDC_PEERS;
         [SpacetimeDB.EnvValues("route", "reducer")]
         public string IDC_TRANSPORT;
+        /// <summary>
+        /// Optional. Unset or "confirmed": wait for durability on both ends (safe, the default).
+        /// "unsafe": skip the waits. Faster, but a crash can duplicate or lose messages. Never use
+        /// it with handoffs (HandoffStart refuses).
+        /// </summary>
+        [SpacetimeDB.EnvValues("confirmed", "unsafe")]
+        public string? IDC_DURABILITY;
     }
+
+    /// <summary>IDC_DURABILITY=unsafe: skip the durability waits.</summary>
+    public static bool IdcDurabilityUnsafe => IdcEnv.IDC_DURABILITY == "unsafe";
 
     static ModuleEnvironment IdcEnv => default;
 
@@ -192,6 +204,9 @@ public static partial class Module
     /// <summary>Call from your Init reducer. Idempotent.</summary>
     public static void IdcInit(ReducerContext ctx)
     {
+        if (IdcDurabilityUnsafe)
+            Log.Warn("idc: IDC_DURABILITY=unsafe. Messages are sent before our commits are durable and dropped " +
+                     "before the peer's are; a crash can duplicate or lose them");
         var tx = new IdcTx(ctx.Db, ctx.Timestamp);
         if (ctx.Db.IdcState.Key.Find(0) is null)
         {
@@ -429,7 +444,8 @@ public static partial class Module
     /// </summary>
     static List<IdcDelivery> IdcDeliverDurably(ProcedureContext ctx, List<IdcClaimed> batch)
     {
-        var peersRaw = ctx.WithTx(_ => IdcEnv.IDC_PEERS);
+        var (peersRaw, unsafeMode) = ctx.WithTx(_ => (IdcEnv.IDC_PEERS, IdcDurabilityUnsafe));
+        if (unsafeMode) return IdcDeliver(ctx, batch);
         List<IdcDelivery> RetryAll(string e) => batch.Select(_ => new IdcDelivery(false, false, false, e)).ToList();
         if (IdcSelfBase(peersRaw, ProcedureContextBase.Identity) is not { } selfBase) return RetryAll("no peers configured");
         if (IdcConfirmDurable(ctx, selfBase) is { } notYet) return RetryAll($"our commit isn't durable yet: {notYet}");
