@@ -23,6 +23,11 @@
 //! - **Request/response** with [`rpc`] and **SQL pulls** with [`sql`] for the times you
 //!   need an answer right away.
 //!
+//! - **Durable before visible.** SpacetimeDB acknowledges a commit before it's on disk, so a
+//!   crash can roll back a transaction whose message was already sent. Delivery waits until our
+//!   own commits are durable before sending, and until the peer's are before calling it done
+//!   (both via `/sql?confirmed=true`).
+//!
 //! Configuration is owner-only by construction: it all comes from environment variables.
 
 use hmac::{Hmac, Mac};
@@ -81,6 +86,12 @@ impl Peer {
             .find("/v1/")
             .map_or(self.base.as_str(), |i| &self.base[..i])
     }
+}
+
+/// Our own `https://host/v1/database/<identity>`, assuming we live on the same host as our first peer.
+fn self_base(raw_peers: &str, me: Identity) -> Option<String> {
+    let peer = peers(raw_peers).into_iter().next()?;
+    Some(format!("{}/v1/database/{}", peer.host(), me.to_hex()))
 }
 
 pub fn peers(raw: &str) -> Vec<Peer> {
@@ -446,7 +457,7 @@ pub fn idc_flush(ctx: &mut ProcedureContext, _job: IdcFlushJob) {
         if batch.is_empty() {
             break;
         }
-        let results = deliver(ctx, &batch);
+        let results = deliver_durably(ctx, &batch);
         ctx.with_tx(|tx| {
             for (claimed, result) in batch.iter().zip(&results) {
                 finish(tx, claimed, result);
@@ -541,6 +552,61 @@ fn finish(ctx: &ReducerContext, claimed: &Claimed, result: &Delivery) {
             );
             ctx.db.idc_outbox().id().update(row);
         }
+    }
+}
+
+/// Deliver a batch, but only once the transactions that queued it are durable here, and only
+/// call it delivered once the peer's transaction that applied it is durable there. Without this,
+/// a crash right after a commit can roll back a transaction whose message the peer already saw
+/// (we sent it), or one the peer said it applied (we dropped it from the outbox).
+fn deliver_durably(ctx: &mut ProcedureContext, batch: &[Claimed]) -> Vec<Delivery> {
+    let (raw_peers, me) = ctx.with_tx(|tx| (tx.env.IDC_PEERS(), tx.database_identity()));
+    let retry_all = |e: String| batch.iter().map(|_| Delivery::Retry(e.clone())).collect();
+    match self_base(&raw_peers, me) {
+        Some(base) => {
+            if let Err(e) = confirm_durable(ctx, &base) {
+                return retry_all(format!("our commit isn't durable yet: {e}"));
+            }
+        }
+        None => return retry_all("no peers configured".into()),
+    }
+    let mut results = deliver(ctx, batch);
+    if results.iter().any(|r| matches!(r, Delivery::Ok(_))) {
+        let peer = find_peer(&raw_peers, &batch[0].row.peer).map(|p| p.base);
+        if let Err(e) = peer.and_then(|base| confirm_durable(ctx, &base)) {
+            // The peer applied it but may still lose it in a crash: send again (its inbox dedupes).
+            for r in results.iter_mut() {
+                if matches!(r, Delivery::Ok(_)) {
+                    *r = Delivery::Retry(format!("peer's commit isn't durable yet: {e}"));
+                }
+            }
+        }
+    }
+    results
+}
+
+/// Wait until every transaction committed so far on the database at `base` is on disk.
+/// `/sql?confirmed=true` only answers once the snapshot it read from is durable.
+fn confirm_durable(ctx: &mut ProcedureContext, base: &str) -> Result<(), String> {
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("{base}/sql?confirmed=true"))
+        .header(header::CONTENT_TYPE, "text/plain")
+        .extension(Timeout::from(TimeDuration::from_duration(HTTP_TIMEOUT)))
+        .body("SELECT table_id FROM st_table WHERE table_id = 0".to_string())
+        .map_err(|e| e.to_string())?;
+    let response = ctx.http.send(request).map_err(|e| e.to_string())?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else {
+        let text: String = response
+            .into_body()
+            .into_string_lossy()
+            .chars()
+            .take(200)
+            .collect();
+        Err(format!("HTTP {status}: {text}"))
     }
 }
 

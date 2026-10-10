@@ -36,6 +36,11 @@ across several header lines (join them with `,`).
 | `POST /route/idc/pair` (signed) | `{"from": "<name>", "identity": "<hex>"}` | `200 {"ok":true}`. `403` if `from` isn't in the receiver's `IDC_PEERS`. |
 | `POST /call/idc_receive` (reducer transport) | `["<envelope as a JSON string>"]` with `Authorization: Bearer <token>` | `200`, or `530` with the reducer error. `… is not a known peer` means pair again. |
 
+Durability: SpacetimeDB acknowledges commits before they're on disk. A sender waits until its own commits are durable
+before sending (`POST <self>/sql?confirmed=true` with `SELECT table_id FROM st_table WHERE table_id = 0`), and after a
+2xx it makes the same call against the peer before dropping the message. If that fails, it sends again (the inbox
+dedupes).
+
 Sender rules: 2xx = delivered. 401/404/408/429/5xx/transport errors = retry with backoff. Any other 4xx, or a per-message
 `ok:false` = dead letter. A 530 from `idc_receive` is a dead letter unless it says `is not a known peer`.
 

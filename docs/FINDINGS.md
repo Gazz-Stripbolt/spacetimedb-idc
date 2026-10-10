@@ -57,6 +57,16 @@ cross-database goes over HTTP, started by a procedure or a handler.
     only the changed variables set in the shell environment.
 12. **The handler RNG is timestamp-seeded.** Nothing here relies on randomness for security: authentication is the HMAC
     secret or a server-issued token.
+13. **A commit is acknowledged before it's durable, and procedures can leak it.** Standalone hands each commit to a
+    background durability actor that writes and fsyncs in batches. The commit is visible to the next transaction right
+    away. Clients are protected (subscriptions and `/sql` default to *confirmed reads* and wait for disk), but a
+    procedure that reads a fresh outbox row and POSTs it to a peer is not. Crash before the fsync and the transaction
+    is gone, yet the peer already acted on it. The reverse also happens: the peer answers 200, crashes, and forgets.
+    Our `kill -9` crash test hit both in CI: duplicated characters, and (with fsync slowed down via `strace`) lost
+    ones. The fix: before sending, the flush procedure calls its own `/sql?confirmed=true` (a read of `st_table`,
+    which works in any language without auth), and it only drops a delivered message after the same call against the
+    peer succeeds. On an in-memory server the wait is a no-op HTTP hop. Worth an upstream API: "wait until my commits are
+    durable" from a procedure, or confirmed-only reads inside `with_tx`.
 
 ## Packaging it as a TypeScript submodule
 
@@ -118,10 +128,13 @@ on both transports. That's six pairings, all in CI.
 - **Protocol handlers must never fail.** A failed receive dead-letters the message on the sender, and a dead `release`
   would strand an entity with zero live copies. Refusals are messages, and hook code that can fail runs in `validate`,
   before anything is written.
+- **The state machine is only as safe as the commits under it.** The first version passed every chaos test and 8 local
+  crash rounds, then duplicated characters in CI's crash test: the CI disk was slow enough that `kill -9` rolled back
+  commits whose messages had already been delivered (gotcha 13). With idc waiting for durability on both ends, the crash
+  test holds on a normal disk and with every fsync delayed by 200 ms.
 - **Crash recovery is bounded by the outbox lease.** After `kill -9`, messages that were mid-delivery stay leased for
   60 s, so transfers with a shorter timeout get cancelled rather than completed. Still exactly one live copy, just
-  slower. Across 8 crash rounds (40 transfers each way, killed 10–200 ms in), every character ended live in exactly one
-  place.
+  slower.
 - **Checksum the exact text, not re-serialized JSON.** C#'s `JsonNode.ToJsonString()` escapes non-ASCII by default and
   key order differs between serializers, so `data` travels as a string and the checksum covers those bytes.
 - **TS submodules: scheduled reducers must be exported from the submodule's entry module.** Splitting the handoff code
@@ -143,6 +156,10 @@ on both transports. That's six pairings, all in CI.
   and rate limiting on the inbox.
 
 ## Benchmarks (local, 2 vCPU, client on the same box)
+
+Measured before the durability waits (gotcha 13). With them, Rust ⇄ Rust is ~35–40 ms per round trip and ~245 orders/s
+on the route transport, and ~55 ms / ~18 orders/s on the reducer transport (one message per call, so every message
+pays both waits).
 
 | Scenario | Result |
 |---|---|

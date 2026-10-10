@@ -118,5 +118,8 @@ See [`docs/HANDOFF.md`](../docs/HANDOFF.md) and the [shard demo](../demo/typescr
 - `ctx.http.fetch` in TypeScript throws on HTTP 530, which is how `/call` reports a reducer error, so the reason is
   lost. On the reducer transport the library re-pairs once, then treats a repeat 530 as a refusal. The route
   transport isn't affected.
+- Delivery waits for durability on both ends (`/sql?confirmed=true` on itself before sending, and on the peer before
+  dropping the message), because SpacetimeDB acknowledges commits before they're on disk. It assumes this database
+  lives on the same host as its first peer.
 - HMAC comes from `@noble/hashes`, because the module runtime has no WebCrypto.
 - u64 columns are `bigint`. The library converts ids to numbers in JSON.
