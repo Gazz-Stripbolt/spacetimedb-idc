@@ -9,7 +9,7 @@ exactly once, with **no polling**. Built from parts SpacetimeDB already ships: p
 HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)**, all speaking one protocol.
 
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
-![SpacetimeDB 2.11](https://img.shields.io/badge/SpacetimeDB-2.11-e8730c)
+![SpacetimeDB 2.12](https://img.shields.io/badge/SpacetimeDB-2.12-e8730c)
 ![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
 ![Rust](https://img.shields.io/badge/Rust-drop--in-b7410e)
 ![C#](https://img.shields.io/badge/C%23-drop--in-512bd4)

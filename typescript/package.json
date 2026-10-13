@@ -14,10 +14,10 @@
     "@noble/hashes": "^1.8.0"
   },
   "peerDependencies": {
-    "spacetimedb": "2.11.*"
+    "spacetimedb": "2.11.* || 2.12.*"
   },
   "devDependencies": {
-    "spacetimedb": "2.11.*",
+    "spacetimedb": "2.12.*",
     "typescript": "~5.6.2"
   },
   "scripts": {

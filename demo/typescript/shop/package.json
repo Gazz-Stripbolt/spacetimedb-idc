@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "spacetimedb": "2.11.*",
+    "spacetimedb": "2.12.*",
     "spacetimedb-idc": "0.1.0"
   },
   "devDependencies": {
