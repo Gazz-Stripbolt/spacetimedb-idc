@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-spacetimedb = { version = "2.11.*", features = ["unstable"] }
+spacetimedb = { version = "2.12.*", features = ["unstable"] }
 log = "0.4"
 http = "1"
 serde = { version = "1", features = ["derive"] }

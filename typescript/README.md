@@ -18,7 +18,7 @@ the `spacetimedb` package:
 
 ```jsonc
 // my-module/package.json
-{ "dependencies": { "spacetimedb": "2.11.*", "spacetimedb-idc": "0.1.0" } }
+{ "dependencies": { "spacetimedb": "2.12.*", "spacetimedb-idc": "0.1.0" } }
 ```
 
 > With two copies of `spacetimedb` (e.g. a `node_modules` inside this folder), `spacetime publish` fails with

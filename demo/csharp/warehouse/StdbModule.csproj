@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SpacetimeDB.Runtime" Version="2.11.*" />
+    <PackageReference Include="SpacetimeDB.Runtime" Version="2.12.*" />
   </ItemGroup>
 
   <!-- The idc library: one shared source file, compiled into this module. -->
