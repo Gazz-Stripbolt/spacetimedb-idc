@@ -53,6 +53,8 @@ jobs:
       - name: Install SpacetimeDB CLI
         run: |
           curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          # The installer gives the latest GitHub release, which can lag the crates/npm/NuGet release.
+          "$HOME/.local/bin/spacetime" version install 2.12.0 && "$HOME/.local/bin/spacetime" version use 2.12.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - id: ver
         run: echo "version=$(spacetime --version | sed -n 's/.*tool version \([0-9.]*\);.*/\1/p')" >> "$GITHUB_OUTPUT"
@@ -99,6 +101,8 @@ jobs:
       - name: Install SpacetimeDB CLI
         run: |
           curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          # The installer gives the latest GitHub release, which can lag the crates/npm/NuGet release.
+          "$HOME/.local/bin/spacetime" version install 2.12.0 && "$HOME/.local/bin/spacetime" version use 2.12.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - uses: actions/cache/restore@v4
         with:
@@ -161,6 +165,8 @@ jobs:
       - name: Install SpacetimeDB CLI
         run: |
           curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          # The installer gives the latest GitHub release, which can lag the crates/npm/NuGet release.
+          "$HOME/.local/bin/spacetime" version install 2.12.0 && "$HOME/.local/bin/spacetime" version use 2.12.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - uses: actions/cache/restore@v4
         with:
