@@ -1,0 +1,69 @@
+name: Publish to npm
+
+# Releases a package to npm with provenance, through npm trusted publishing (OIDC):
+# no npm token is stored anywhere. Push a tag `<package>-v<version>` (for example
+# `idc-v0.1.1`) whose version matches the package's package.json, or run this
+# workflow by hand and pick the package.
+#
+# One-time setup per package (by the npm owner, after the first manual publish):
+#   npm trust github <npm name> --file publish.yml --repo Gazz-Stripbolt/spacetimedb-idc --allow-publish
+
+on:
+  push:
+    tags:
+      - 'idc-v*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish
+        type: choice
+        options: [idc]
+
+permissions:
+  contents: read
+  id-token: write   # lets npm verify this workflow (trusted publishing + provenance)
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing (11.5.1+)
+        run: npm install -g npm@latest && npm --version
+      - name: Resolve the package
+        id: pkg
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            name="${GITHUB_REF_NAME%-v*}"
+            version="${GITHUB_REF_NAME##*-v}"
+          else
+            name="${{ inputs.package }}"
+            version=""
+          fi
+          case "$name" in
+            idc) dir=typescript ;;
+            *) echo "::error::unknown package '$name'"; exit 1 ;;
+          esac
+          actual=$(node -p "require('./$dir/package.json').version")
+          if [[ -n "$version" && "$version" != "$actual" ]]; then
+            echo "::error::tag version $version doesn't match $dir/package.json ($actual)"; exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "Publishing $(node -p "require('./$dir/package.json').name")@$actual from $dir"
+      - run: npm ci   # also builds every workspace package (prepare)
+      - name: Test
+        run: npm run typecheck
+      - name: Package contents
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm pack --dry-run
+      - name: Publish
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm publish --provenance --access public

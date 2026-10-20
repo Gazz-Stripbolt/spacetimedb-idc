@@ -1,5 +1,5 @@
 /**
- * # spacetimedb-idc: inter-database communication, as a SpacetimeDB submodule
+ * # @pogly/spacetimedb-idc: inter-database communication, as a SpacetimeDB submodule
  *
  * The TypeScript twin of `rust/idc.rs` and `csharp/Idc.cs`. Same wire protocol, so TypeScript,
  * Rust and C# databases all talk to each other.
@@ -17,7 +17,7 @@
  *   own commits are durable before sending, and until the peer's are before calling it done
  *   (both via `/sql?confirmed=true`).
  *
- * Handoffs (moving an entity between databases safely) live in `spacetimedb-idc/handoff`;
+ * Handoffs (moving an entity between databases safely) live in `@pogly/spacetimedb-idc/handoff`;
  * their tables and timeout job are part of this submodule.
  *
  * Mount it in your module with `schema({ ..., idc })`, then see `README.md` for
@@ -769,7 +769,7 @@ export function sql(ctx: IdcProcedureCtx, peerName: string, query: string): any 
 /**
  * Ask the target to drop an outgoing transfer. Only possible until we've seen its `accept`;
  * after that the entity already belongs to the target. The entity stays locked until the
- * target confirms, then your `returned` hook runs. Exported as `cancel` from `spacetimedb-idc/handoff`.
+ * target confirms, then your `returned` hook runs. Exported as `cancel` from `@pogly/spacetimedb-idc/handoff`.
  */
 export function cancelHandoff(ctx: IdcCtx, transferId: string, reason: string): void {
   const h = ctx.db.handoff.id.find(transferId);

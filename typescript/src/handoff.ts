@@ -1,5 +1,5 @@
 /**
- * # spacetimedb-idc/handoff: move an entity between databases safely
+ * # @pogly/spacetimedb-idc/handoff: move an entity between databases safely
  *
  * The TypeScript twin of `rust/handoff.rs`, on the same wire protocol. The classic case is a game
  * character walking from one world shard to the next. "Copy to B, then delete on A" can't be made
@@ -25,7 +25,7 @@
 import { SenderError } from 'spacetimedb/server';
 import { ScheduleAt } from 'spacetimedb';
 import { sha256 } from '@noble/hashes/sha2';
-import { send, cancelHandoff, parsePeers, type IdcCtx, type Message } from './index';
+import { send, cancelHandoff, parsePeers, type IdcCtx, type Message } from './index.js';
 
 /** How long the source waits for an answer before it asks the target to cancel. */
 export const DEFAULT_TIMEOUT_MS = 30_000;

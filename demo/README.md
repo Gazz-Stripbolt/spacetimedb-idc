@@ -21,7 +21,7 @@ pairing:
 | Folder | Language | Uses |
 |---|---|---|
 | [`rust/shop`](rust/shop/src/lib.rs), [`rust/warehouse`](rust/warehouse/src/lib.rs) | Rust | [`rust/idc.rs`](../rust/idc.rs) |
-| [`typescript/shop`](typescript/shop/src/index.ts) | TypeScript | the [`spacetimedb-idc` submodule](../typescript) |
+| [`typescript/shop`](typescript/shop/src/index.ts) | TypeScript | the [`@pogly/spacetimedb-idc` submodule](../typescript) |
 | [`csharp/shop`](csharp/shop/Lib.cs), [`csharp/warehouse`](csharp/warehouse/Lib.cs) | C# | [`csharp/Idc.cs`](../csharp/Idc.cs) |
 | [`dashboard/`](dashboard) | HTML + Rust | Live dashboard the Rust modules serve at `/route/` |
 

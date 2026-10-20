@@ -8,21 +8,22 @@ Protocol: [`docs/PROTOCOL.md`](../docs/PROTOCOL.md)
 
 ## Install
 
-Not on npm yet. Copy this folder into your repo and add it as an npm workspace package, so there's a single copy of
-the `spacetimedb` package:
+```bash
+npm install @pogly/spacetimedb-idc spacetimedb
+```
+
+Use `spacetimedb` 2.11.x or 2.12.x, and keep only one copy of it in your module's dependency tree. With two copies,
+`spacetime publish` fails with *"Local module schema inspection failed"*. The package ships compiled JavaScript plus
+its TypeScript source, which is where the types come from. It depends on `@noble/hashes`.
+
+To work on it from a clone instead, add this folder to your npm workspaces next to your module:
 
 ```jsonc
 // package.json at your repo root
-{ "private": true, "workspaces": ["spacetimedb-idc", "my-module"] }
-```
-
-```jsonc
+{ "private": true, "workspaces": ["spacetimedb-idc/typescript", "my-module"] }
 // my-module/package.json
-{ "dependencies": { "spacetimedb": "2.12.*", "spacetimedb-idc": "0.1.0" } }
+{ "dependencies": { "spacetimedb": "2.12.*", "@pogly/spacetimedb-idc": "*" } }
 ```
-
-> With two copies of `spacetimedb` (e.g. a `node_modules` inside this folder), `spacetime publish` fails with
-> *"Local module schema inspection failed"*.
 
 ## Wire it up
 
@@ -30,7 +31,7 @@ Submodules can't read env vars, have lifecycle reducers or contribute routes, so
 
 ```typescript
 import { schema, table, t, Router, type ReducerCtx } from 'spacetimedb/server';
-import * as idc from 'spacetimedb-idc';                 // `import * as`, not a default import
+import * as idc from '@pogly/spacetimedb-idc';                 // `import * as`, not a default import
 
 const spacetimedb = schema(
   { order, idc },                                       // mounted under the namespace "idc"
@@ -103,7 +104,7 @@ or lost. Its tables (`idc.handoff`, public, plus a sequence and a timeout schedu
 there's nothing extra to mount:
 
 ```typescript
-import * as handoff from 'spacetimedb-idc/handoff';
+import * as handoff from '@pogly/spacetimedb-idc/handoff';
 
 function onMessage(tx: Ctx, msg: idc.Message) {
   if (handoff.onIdcMessage(tx, msg, { scope: (c: Ctx) => c.as.idc, hooks })) return;   // hooks: handoff.Hooks<Ctx>
