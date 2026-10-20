@@ -1,11 +1,11 @@
 /**
- * **shop**, in TypeScript, using `spacetimedb-idc` as a submodule.
+ * **shop**, in TypeScript, using `@pogly/spacetimedb-idc` as a submodule.
  *
  * Same behaviour as the Rust shop (`demo/rust/shop`), and it talks to Rust or C# warehouses over the same
  * wire protocol. Everything IDC-specific is in the "idc wiring" block: about 25 lines.
  */
 import { schema, table, t, Router, SyncResponse, type ReducerCtx } from 'spacetimedb/server';
-import * as idc from 'spacetimedb-idc';
+import * as idc from '@pogly/spacetimedb-idc';
 
 const WAREHOUSE = 'warehouse';
 

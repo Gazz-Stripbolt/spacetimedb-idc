@@ -5,7 +5,7 @@ house. A tenant moves to another region. Each of these is the same problem: **on
 at the moment another one starts**, with no window where both own it (a dupe) or neither does (a loss).
 
 Handoffs solve that on top of idc, in Rust ([`rust/handoff.rs`](../rust/handoff.rs)), C#
-([`csharp/Handoff.cs`](../csharp/Handoff.cs)) and TypeScript ([`spacetimedb-idc/handoff`](../typescript/src/handoff.ts)).
+([`csharp/Handoff.cs`](../csharp/Handoff.cs)) and TypeScript ([`@pogly/spacetimedb-idc/handoff`](../typescript/src/handoff.ts)).
 All three use the same wire protocol, so any pairing can transfer.
 
 <picture>
@@ -158,8 +158,8 @@ The hooks are required partial methods, so a missing one is a compile error.
 The tables and the timeout job are part of the idc submodule, so there's nothing extra to mount:
 
 ```typescript
-import * as idc from 'spacetimedb-idc';
-import * as handoff from 'spacetimedb-idc/handoff';
+import * as idc from '@pogly/spacetimedb-idc';
+import * as handoff from '@pogly/spacetimedb-idc/handoff';
 
 const hooks: handoff.Hooks<Ctx> = {
   validate(tx, from, entity, data) { if (tx.db.character.name.find(entity)) throw new Error('name taken'); },

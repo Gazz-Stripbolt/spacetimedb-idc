@@ -11,6 +11,7 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
 ![SpacetimeDB 2.12](https://img.shields.io/badge/SpacetimeDB-2.12-e8730c)
 ![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
+[![npm](https://img.shields.io/npm/v/@pogly/spacetimedb-idc?label=npm%20%40pogly%2Fspacetimedb-idc&color=cb3837)](https://www.npmjs.com/package/@pogly/spacetimedb-idc)
 ![Rust](https://img.shields.io/badge/Rust-drop--in-b7410e)
 ![C#](https://img.shields.io/badge/C%23-drop--in-512bd4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -35,7 +36,7 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 |---|---|
 | **Rust**: add IDC to a Rust module | [`rust/`](rust): `idc.rs`, one drop-in file |
 | **C#**: add IDC to a C# module | [`csharp/`](csharp): `Idc.cs`, one drop-in file |
-| **TypeScript**: add IDC to a TS module, as a **submodule** | [`typescript/`](typescript): the `spacetimedb-idc` submodule |
+| **TypeScript**: add IDC to a TS module, as a **submodule** | [`typescript/`](typescript): `npm install @pogly/spacetimedb-idc` ([npm](https://www.npmjs.com/package/@pogly/spacetimedb-idc)) |
 | **See it working**: two databases talking | [`demo/`](demo): shop ⇄ warehouse in Rust (plus TS and C# variants) |
 | **Move a character between shards** (or anything that must never be duplicated or lost) | [`docs/HANDOFF.md`](docs/HANDOFF.md): handoffs, all three languages |
 | **The wire format**, to port it or debug it | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
@@ -125,7 +126,7 @@ synchronous calls: crash between the two steps and you get a duplicate or a loss
 spans two databases.
 
 **Handoffs** ([`rust/handoff.rs`](rust/handoff.rs), [`csharp/Handoff.cs`](csharp/Handoff.cs),
-[`spacetimedb-idc/handoff`](typescript/src/handoff.ts)) are an ownership state machine on top of idc:
+[`@pogly/spacetimedb-idc/handoff`](typescript/src/handoff.ts)) are an ownership state machine on top of idc:
 
 ```
 source:  start() locks it ── offer ──▶ target: validate, import as pending
@@ -182,7 +183,7 @@ data isn't touched. Then run `spacetime call <db> idc_kick` once, because `init`
 ```
 rust/idc.rs, rust/handoff.rs         Rust drop-ins
 csharp/Idc.cs, csharp/Handoff.cs     C# drop-ins
-typescript/                          TypeScript submodule (spacetimedb-idc, spacetimedb-idc/handoff)
+typescript/                          TypeScript submodule (@pogly/spacetimedb-idc, …/handoff)
 demo/rust/{shop,warehouse}           the reference demo
 demo/typescript/shop                 the shop on the TS submodule
 demo/csharp/{shop,warehouse}         the demo in C#

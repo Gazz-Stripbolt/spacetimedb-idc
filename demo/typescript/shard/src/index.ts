@@ -1,13 +1,13 @@
 /**
- * **shard**, in TypeScript: one strip of a game world, using `spacetimedb-idc` and its handoffs.
+ * **shard**, in TypeScript: one strip of a game world, using `@pogly/spacetimedb-idc` and its handoffs.
  *
  * Same behaviour as the Rust shard (`demo/rust/shard`). Publish it twice (e.g. `shard-a` and `shard-b`)
  * and point each at the other; characters walk across the border with a handoff, and any pairing of
  * TypeScript, Rust and C# shards works.
  */
 import { schema, table, t, Router, SyncResponse, SenderError, type ReducerCtx } from 'spacetimedb/server';
-import * as idc from 'spacetimedb-idc';
-import * as handoff from 'spacetimedb-idc/handoff';
+import * as idc from '@pogly/spacetimedb-idc';
+import * as handoff from '@pogly/spacetimedb-idc/handoff';
 
 /**
  * Each shard is `WIDTH` columns of the world. The shard whose name sorts first is the west
