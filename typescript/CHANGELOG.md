@@ -2,6 +2,10 @@
 
 All notable changes to `@pogly/spacetimedb-idc` are listed here. It follows [semantic versioning](https://semver.org/).
 
+## 0.1.1 (2026-10-20)
+
+- First release published from CI, with npm provenance. No code changes.
+
 ## 0.1.0 (2026-10-20)
 
 - First npm release, as `@pogly/spacetimedb-idc` (previously the unpublished workspace package `spacetimedb-idc`).
