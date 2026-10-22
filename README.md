@@ -2,14 +2,14 @@
 
 # 🔧 Spacetime IDC
 
-**Inter-database communication for SpacetimeDB, today.**
+**Inter-database communication for Spacetime, today.**
 
 Databases that push messages to each other: delivered in about 10 ms per hop, retried until delivered, applied
-exactly once, with **no polling**. Built from parts SpacetimeDB already ships: procedures, schedule tables and
+exactly once, with **no polling**. Built from parts Spacetime already ships: procedures, schedule tables and
 HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)**, all speaking one protocol.
 
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
-![SpacetimeDB 2.12](https://img.shields.io/badge/SpacetimeDB-2.12-e8730c)
+![Spacetime 2.12](https://img.shields.io/badge/Spacetime-2.12-e8730c)
 ![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
 [![npm](https://img.shields.io/npm/v/@pogly/spacetimedb-idc?label=npm%20%40pogly%2Fspacetimedb-idc&color=cb3837)](https://www.npmjs.com/package/@pogly/spacetimedb-idc)
 ![Rust](https://img.shields.io/badge/Rust-drop--in-b7410e)
@@ -26,7 +26,7 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 ---
 
 > [!NOTE]
-> **A stopgap until native IDC ships.** SpacetimeDB has native inter-database communication on the way: async IDC is
+> **A stopgap until native IDC ships.** Spacetime has native inter-database communication on the way: async IDC is
 > planned first (the work is already landing upstream), and sync IDC later. When it arrives, prefer it. This repo
 > stays useful as a reference for outbox, retry and idempotency patterns.
 
@@ -52,7 +52,7 @@ Every language talks to every other. CI runs the full end-to-end suite on each c
 
 ## The problem
 
-SpacetimeDB databases can't talk to each other natively yet. Native inter-database communication is coming, but until it
+Spacetime databases can't talk to each other natively yet. Native inter-database communication is coming, but until it
 lands the usual workaround is to call the other database's HTTP API (`/call`, `/sql`) from a procedure. That has three sore spots:
 
 1. **You hand-maintain a secrets table** with a token for the other database.
@@ -92,7 +92,7 @@ sequenceDiagram
   to 60 s, each peer's messages stay in order, and anything the peer permanently refuses becomes a dead letter.
 - **Idempotent apply:** every message has a globally unique id, recorded in the *same* transaction as its effect. So
   at-least-once delivery has an exactly-once effect.
-- **Durable before visible:** SpacetimeDB acknowledges a commit before it's on disk, so a crash can undo a transaction
+- **Durable before visible:** Spacetime acknowledges a commit before it's on disk, so a crash can undo a transaction
   whose message already went out. idc sends only once its own commits are durable, and drops a message only once the
   peer's commit is durable (both via `/sql?confirmed=true`). A `kill -9` crash test checks this in CI.
 
@@ -101,7 +101,7 @@ sequenceDiagram
 | | **Route** (default) | **Reducer** |
 |---|---|---|
 | How | POST to the peer's HTTP handler `/route/idc/inbox` | POST `/call/idc_receive` as an identity the peer knows |
-| Auth | HMAC-SHA256 over `timestamp.body` with a shared secret; the secret never travels | SpacetimeDB identity token + known-identity table |
+| Auth | HMAC-SHA256 over `timestamp.body` with a shared secret; the secret never travels | Spacetime identity token + known-identity table |
 | Setup | One env var (`IDC_SECRET`) on each side | **Pairing**, fully automatic (below) |
 | Batching | Up to 64 messages per request | One message per call |
 | Throughput* | ~245 orders/s Rust (~270–300 before the durability waits) | ~18 orders/s (was ~43–49) |
@@ -171,8 +171,8 @@ data isn't touched. Then run `spacetime call <db> idc_kick` once, because `init`
 
 - **Local development needs a dev server.** Standalone blocks module HTTP to loopback and private addresses, so two
   databases on one local server can't reach each other. [`scripts/dev-server.sh`](scripts/dev-server.sh) builds
-  standalone with SpacetimeDB's own `allow_loopback_http_for_tests` feature. Maincloud uses public URLs and doesn't need it.
-- **Procedures and HTTP handlers are beta** in SpacetimeDB. APIs may move between releases.
+  standalone with Spacetime's own `allow_loopback_http_for_tests` feature. Maincloud uses public URLs and doesn't need it.
+- **Procedures and HTTP handlers are beta** in Spacetime. APIs may move between releases.
 - **Tokens from `/v1/identity` don't expire.** Treat the peer-token table as a secret.
 - **The secret is shared across the mesh.** Per-peer secrets would be an easy extension.
 - **Maincloud:** not tested from this repo. It's the same mechanism (module → public HTTPS → module) apps already use
@@ -197,12 +197,12 @@ docs/                                PROTOCOL.md · FINDINGS.md · HANDOFF.md ·
 ## Credits
 
 Built by **Tinker** ([@Gazz-Stripbolt](https://github.com/Gazz-Stripbolt)), the resident gadgeteer for the
-[Pogly](https://pogly.gg) team: collaborative stream overlays, powered by SpacetimeDB. Pogly's own cross-database
+[Pogly](https://pogly.gg) team: collaborative stream overlays, powered by Spacetime. Pogly's own cross-database
 setup, and the wish to make it event-driven, inspired this repo.
 
-More SpacetimeDB building blocks from this workshop: **[github.com/Gazz-Stripbolt](https://github.com/Gazz-Stripbolt)**.
+More Spacetime building blocks from this workshop: **[github.com/Gazz-Stripbolt](https://github.com/Gazz-Stripbolt)**.
 
-🚀 **New to SpacetimeDB?** If you sign up through **[this referral link](https://spacetimedb.com/?referral=Lethalchip)**,
+🚀 **New to Spacetime?** If you sign up through **[this referral link](https://spacetimedb.com/?referral=Lethalchip)**,
 Pogly gets free recurring energy. Thank you!
 
 ## License

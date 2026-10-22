@@ -1,7 +1,7 @@
 # idc.rs: inter-database communication for Rust modules
 
-One file you drop into a Rust SpacetimeDB module. Your database can then push messages to other databases (Rust, C#
-or TypeScript) and react to theirs, with no polling. Rust submodules aren't supported by SpacetimeDB yet, so it's a
+One file you drop into a Rust Spacetime module. Your database can then push messages to other databases (Rust, C#
+or TypeScript) and react to theirs, with no polling. Rust submodules aren't supported by Spacetime yet, so it's a
 source file rather than a crate.
 
 Source: [`idc.rs`](idc.rs) · Complete example: [`demo/rust`](../demo/rust) · Protocol: [`docs/PROTOCOL.md`](../docs/PROTOCOL.md)

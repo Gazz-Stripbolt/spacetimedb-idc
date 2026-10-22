@@ -1,4 +1,4 @@
-# Findings: database-to-database communication on SpacetimeDB 2.11
+# Findings: database-to-database communication on Spacetime 2.11
 
 **Tested on:** standalone 2.11.0 (built with `allow_loopback_http_for_tests`), Rust modules, a 2-vCPU Linux VM.
 **Source read:** `clockworklabs/SpacetimeDB` at `v2.11.0` / master `f0d2ad4`.
@@ -148,7 +148,7 @@ on both transports. That's six pairings, all in CI.
 
 - **Route transport:** HMAC-SHA256 over `"<micros>.<body>"` with a mesh-wide secret from an env var, ±5 minute window,
   constant-time comparison. Replays inside the window are absorbed by the inbox.
-- **Reducer transport:** a SpacetimeDB token, issued by the peer's host, for an identity the peer has explicitly stored
+- **Reducer transport:** a Spacetime token, issued by the peer's host, for an identity the peer has explicitly stored
   in `idc_known_peer`. The reducer also checks that the identity's name matches the envelope's `from`.
 - **Pairing** is itself HMAC-signed, and only names listed in the receiver's `IDC_PEERS` can be paired.
 - **All config lives in env vars** (owner-controlled). Tokens and payloads live in private tables. `idc_log` is public,

@@ -22,7 +22,7 @@ no transaction that spans two databases:
 - B commits the copy, then A crashes before deleting: **duplicate** (the classic dupe exploit).
 - A deletes first, then B fails: **lost character**.
 
-Without distributed transactions (two-phase commit across databases, which SpacetimeDB doesn't have), the only safe
+Without distributed transactions (two-phase commit across databases, which Spacetime doesn't have), the only safe
 design is an **ownership state machine** where each step is one local transaction plus a durable message, every
 message is idempotent, and every step is retried until it's done. That design is asynchronous by nature. Sync IDC
 would only shave latency.
@@ -221,7 +221,7 @@ must be live on exactly one shard. Depending on where the kill lands, all transf
 there's a mix.
 
 This test earned its keep. The first version of the protocol passed everything else, then **duplicated characters in
-CI** and **lost them all** under slow fsync. SpacetimeDB acknowledges a commit before it's durable, so a crash rolled
+CI** and **lost them all** under slow fsync. Spacetime acknowledges a commit before it's durable, so a crash rolled
 back transactions whose messages had already been delivered. idc now waits for durability on both ends (see
 [FINDINGS](FINDINGS.md), gotcha 13), and the crash test holds in both modes.
 

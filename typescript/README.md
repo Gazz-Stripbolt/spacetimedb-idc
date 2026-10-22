@@ -1,6 +1,6 @@
 # spacetimedb-idc for TypeScript (submodule)
 
-Inter-database communication as a **SpacetimeDB submodule**. Mount it in your module and your database can push
+Inter-database communication as a **Spacetime submodule**. Mount it in your module and your database can push
 messages to other databases (in TypeScript, Rust or C#) and react to theirs, with no polling.
 
 Source: [`src/index.ts`](src/index.ts) · Complete example: [`demo/typescript/shop`](../demo/typescript/shop/src/index.ts) ·
@@ -122,7 +122,7 @@ See [`docs/HANDOFF.md`](../docs/HANDOFF.md) and the [shard demo](../demo/typescr
   lost. On the reducer transport the library re-pairs once, then treats a repeat 530 as a refusal. The route
   transport isn't affected.
 - Delivery waits for durability on both ends (`/sql?confirmed=true` on itself before sending, and on the peer before
-  dropping the message), because SpacetimeDB acknowledges commits before they're on disk. It assumes this database
+  dropping the message), because Spacetime acknowledges commits before they're on disk. It assumes this database
   lives on the same host as its first peer.
 - HMAC comes from `@noble/hashes`, because the module runtime has no WebCrypto.
 - u64 columns are `bigint`. The library converts ids to numbers in JSON.

@@ -1,7 +1,7 @@
 # Idc.cs: inter-database communication for C# modules
 
-One file you add to a C# SpacetimeDB module. Your database can then push messages to other databases (C#, Rust or
-TypeScript) and react to theirs, with no polling. C# submodules aren't supported by SpacetimeDB yet, so it's a source
+One file you add to a C# Spacetime module. Your database can then push messages to other databases (C#, Rust or
+TypeScript) and react to theirs, with no polling. C# submodules aren't supported by Spacetime yet, so it's a source
 file rather than a package.
 
 Source: [`Idc.cs`](Idc.cs) · Complete examples: [`demo/csharp/shop`](../demo/csharp/shop/Lib.cs),
@@ -85,7 +85,7 @@ no window where it's duplicated or lost. Add it next to `Idc.cs`, call `HandoffI
 | **NativeAOT-LLVM** (.NET 10 on Linux; .NET 8 + `--native-aot` on Windows) | **~24–32 ms** | **~270 orders/s** | ~43 orders/s |
 | Mono JIT (`.NET 8`, `wasi-experimental` workload) | ~60–90 ms | ~154 orders/s | ~21 orders/s |
 
-With NativeAOT-LLVM, C# runs on par with Rust and TypeScript. The demo modules target `net10.0`, and the SpacetimeDB CLI
+With NativeAOT-LLVM, C# runs on par with Rust and TypeScript. The demo modules target `net10.0`, and the Spacetime CLI
 then builds them with NativeAOT-LLVM automatically. The CLI only allows NativeAOT-LLVM on .NET 8 on Windows. On Linux it
 needs .NET 10 (`spacetime publish --native-aot` with .NET 8 on Linux is refused). `Idc.cs` works on all three build paths.
 
