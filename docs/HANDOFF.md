@@ -244,7 +244,7 @@ on Rust ⇄ Rust. Locally, all nine directed pairings pass.
 ## Native IDC later
 
 Handoffs only depend on what idc offers: send a message in a transaction, at-least-once delivery, per-peer order,
-and an idempotent receive. Native async IDC (planned upstream) provides the same contract, so the state machine
+and an idempotent receive. Native async IDC (in Spacetime 2.14, for Rust and TypeScript) provides the same contract, so the state machine
 carries over unchanged: swap `idc::send` for the native send and the inbox for the native receive. If native IDC
 doesn't guarantee per-peer ordering, the target needs one extra rule: a `cancel` that arrives before its `offer`
 leaves a tombstone (the handlers already do this), and the late offer is ignored.

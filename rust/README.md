@@ -11,7 +11,7 @@ Source: [`idc.rs`](idc.rs) · Complete example: [`demo/rust`](../demo/rust) · P
 1. Copy `idc.rs` to your module's `src/idc.rs` and add `pub mod idc;` to `lib.rs`.
 2. Dependencies:
    ```toml
-   spacetimedb = { version = "2.12.*", features = ["unstable"] }
+   spacetimedb = { version = "2.14.*", features = ["unstable"] }
    http = "1"
    serde = { version = "1", features = ["derive"] }
    serde_json = "1"

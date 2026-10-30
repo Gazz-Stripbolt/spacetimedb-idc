@@ -9,7 +9,7 @@ exactly once, with **no polling**. Built from parts Spacetime already ships: pro
 HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)**, all speaking one protocol.
 
 [![CI](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml/badge.svg)](https://github.com/Gazz-Stripbolt/spacetimedb-idc/actions/workflows/ci.yml)
-![Spacetime 2.12](https://img.shields.io/badge/Spacetime-2.12-e8730c)
+![Spacetime 2.14](https://img.shields.io/badge/Spacetime-2.14-e8730c)
 ![TypeScript submodule](https://img.shields.io/badge/TypeScript-submodule-3178c6)
 [![npm](https://img.shields.io/npm/v/@pogly/spacetimedb-idc?label=npm%20%40pogly%2Fspacetimedb-idc&color=cb3837)](https://www.npmjs.com/package/@pogly/spacetimedb-idc)
 ![Rust](https://img.shields.io/badge/Rust-drop--in-b7410e)
@@ -26,9 +26,13 @@ HTTP handlers. Available for **Rust**, **C#** and **TypeScript (as a submodule)*
 ---
 
 > [!NOTE]
-> **A stopgap until native IDC ships.** Spacetime has native inter-database communication on the way: async IDC is
-> planned first (the work is already landing upstream), and sync IDC later. When it arrives, prefer it. This repo
-> stays useful as a reference for outbox, retry and idempotency patterns.
+> **Spacetime 2.14 has native async inter-database communication for Rust and TypeScript.** You declare dependencies in
+> `spacetime.json`, and `spacetime generate` produces typed receiver bindings and outbox tables. For Rust and TypeScript
+> modules, prefer it. C# and C++ support is coming in a future release
+> ([release notes](https://github.com/clockworklabs/SpacetimeDB/releases/tag/v2.14.0)).
+>
+> This repo stays useful for C#, for mixed setups that include C#, and for what native IDC doesn't do, such as
+> [handoffs](docs/HANDOFF.md). It's also a reference for outbox, retry and idempotency patterns.
 
 ## Where to go
 
@@ -52,8 +56,8 @@ Every language talks to every other. CI runs the full end-to-end suite on each c
 
 ## The problem
 
-Spacetime databases can't talk to each other natively yet. Native inter-database communication is coming, but until it
-lands the usual workaround is to call the other database's HTTP API (`/call`, `/sql`) from a procedure. That has three sore spots:
+Before 2.14, Spacetime databases couldn't talk to each other natively. The usual workaround was to call the other
+database's HTTP API (`/call`, `/sql`) from a procedure. That has three sore spots:
 
 1. **You hand-maintain a secrets table** with a token for the other database.
 2. **You hand-maintain a "known identities" table** on the other side to check who's calling. If you want traffic both

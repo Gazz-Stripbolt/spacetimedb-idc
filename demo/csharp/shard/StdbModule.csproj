@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SpacetimeDB.Runtime" Version="2.12.*" />
+    <PackageReference Include="SpacetimeDB.Runtime" Version="2.14.*" />
   </ItemGroup>
 
   <!-- The idc and handoff libraries: shared source files, compiled into this module. -->

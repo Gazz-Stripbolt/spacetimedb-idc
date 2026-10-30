@@ -27,7 +27,7 @@ pairing:
 
 ## Run it
 
-You need the [Spacetime CLI](https://spacetimedb.com/install) 2.11+, Rust with `wasm32-unknown-unknown`, and
+You need the [Spacetime CLI](https://spacetimedb.com/install) 2.14+, Rust with `wasm32-unknown-unknown`, and
 `python3` for the tests. For the other variants you also need Node 22+ (TypeScript) or the .NET 10 SDK (C#, built with
 NativeAOT-LLVM).
 
