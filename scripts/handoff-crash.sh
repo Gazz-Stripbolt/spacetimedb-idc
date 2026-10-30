@@ -59,6 +59,16 @@ print(sum(1 for cs in copies.values() if cs and cs[0][0] == "a"), sum(1 for cs i
 PY
 }
 
+# What's stuck and why: outbox rows, scheduled flushes and the modules' own logs.
+diagnose() {
+  for db in shard-a shard-b; do
+    echo "--- $db"
+    spacetime sql -s "$SERVER" "$db" "SELECT id, peer, kind, attempts, in_flight_until, next_attempt, last_error FROM idc_outbox LIMIT 6" 2>&1 | cut -c1-240
+    spacetime sql -s "$SERVER" "$db" "SELECT * FROM idc_flush_job" 2>&1 | cut -c1-160
+    spacetime logs -s "$SERVER" "$db" -n 40 2>&1 | cut -c1-240
+  done
+}
+
 for i in $(seq 0 $((N - 1))); do call shard-a spawn "[\"c$i\"]" >/dev/null; done
 fail=0
 for round in $(seq "$ROUNDS"); do
@@ -82,7 +92,10 @@ for round in $(seq "$ROUNDS"); do
   done
   read -r on_a on_b statuses verdict <<<"$result"
   printf '  round %d (%s): a=%s b=%s  [%s]  %s\n' "$round" "$mid" "$on_a" "$on_b" "$statuses" "$verdict"
-  [[ $result == *" ok" ]] || fail=1
+  if [[ $result != *" ok" ]]; then
+    ((fail == 0)) && diagnose
+    fail=1
+  fi
 done
 ((fail == 0)) && echo "all rounds: every character live on exactly one shard" || { echo "INVARIANT BROKEN"; tail -30 "$LOG"; }
 ((fail == 0))
