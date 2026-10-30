@@ -65,7 +65,18 @@ public static partial class Module
     /// <summary>IDC_DURABILITY=unsafe: skip the durability waits.</summary>
     public static bool IdcDurabilityUnsafe => IdcEnv.IDC_DURABILITY == "unsafe";
 
-    static ModuleEnvironment IdcEnv => default;
+    // ModuleEnvironment isn't generated on .NET 10, where only ctx.Env has these fields, and this
+    // code often has no ctx. DatabaseEnvironment.Get works on every target.
+    readonly struct IdcEnvValues
+    {
+        public string IDC_SELF => default(DatabaseEnvironment).Get("IDC_SELF") ?? throw new InvalidOperationException("Required environment value is absent");
+        public string IDC_SECRET => default(DatabaseEnvironment).Get("IDC_SECRET") ?? throw new InvalidOperationException("Required environment value is absent");
+        public string IDC_PEERS => default(DatabaseEnvironment).Get("IDC_PEERS") ?? throw new InvalidOperationException("Required environment value is absent");
+        public string IDC_TRANSPORT => default(DatabaseEnvironment).Get("IDC_TRANSPORT") ?? throw new InvalidOperationException("Required environment value is absent");
+        public string? IDC_DURABILITY => default(DatabaseEnvironment).Get("IDC_DURABILITY");
+    }
+
+    static IdcEnvValues IdcEnv => default;
 
     const long IdcMaxSkewUs = 5L * 60 * 1_000_000;
     const long IdcLeaseUs = 60L * 1_000_000;
