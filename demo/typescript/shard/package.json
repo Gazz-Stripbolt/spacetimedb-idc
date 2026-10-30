@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "spacetimedb": "2.12.*",
+    "spacetimedb": "2.14.*",
     "@pogly/spacetimedb-idc": "*"
   },
   "devDependencies": {

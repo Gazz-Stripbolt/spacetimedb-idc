@@ -9,14 +9,14 @@
 |---|---|---|---|
 | Reducer | ❌ | A client or the scheduler calls it | Transactional and deterministic. Can insert schedule rows. |
 | Procedure | ✅ `ctx.http` | A client calls it, or a **schedule row** fires | Not a transaction. Use `with_tx` for DB access, and **no HTTP inside `with_tx`**. |
-| HTTP handler | ✅ `ctx.http` | An HTTP request hits `/route/...` | No caller identity. Use `with_tx` for DB access. |
+| HTTP handler | ✅ `ctx.http` | An HTTP request hits `/route/...` | No usable caller identity: since 2.14 the sender is a new identity on every request. Use `with_tx` for DB access. |
 | Schedule table | — | `ScheduleAt::Time(t)` once, or `Interval` | One-shot rows for procedures are deleted *before* the procedure runs. |
 | `/v1/database/:db/call/:fn` | — | — | Reducer **or procedure**. Bearer token → `ctx.sender()`. Procedure return values come back in the body. |
 | `/v1/database/:db/sql` | — | — | Reads of public tables need no auth. Private tables and DML need the **owner**. |
 | `/v1/identity` | — | — | Mints a fresh identity + token. The token has no expiry. |
 
-There's no native database-to-database channel and no way for a module to subscribe to another database. Everything
-cross-database goes over HTTP, started by a procedure or a handler.
+Before 2.14 there was no native database-to-database channel, and a module still can't subscribe to another database.
+Everything cross-database here goes over HTTP, started by a procedure or a handler.
 
 ## Event-driven without polling: how
 
