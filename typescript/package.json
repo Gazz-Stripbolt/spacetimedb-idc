@@ -1,6 +1,6 @@
 {
   "name": "@pogly/spacetimedb-idc",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Inter-database communication for SpacetimeDB, as a submodule: transactional outbox, push delivery, idempotent inbox and safe handoffs. Wire-compatible with idc.rs / Idc.cs.",
   "license": "MIT",
   "type": "module",
