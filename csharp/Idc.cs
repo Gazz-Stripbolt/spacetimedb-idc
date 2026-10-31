@@ -362,9 +362,13 @@ public static partial class Module
         }
         var batch = new List<IdcClaimed>();
         if (peer is null) return batch;
+        // Each message is its own transaction on the peer, and since 2.13 each one waits for
+        // durability, so on a slow disk a full batch can outlast the HTTP timeout. Retrying it whole
+        // would too (duplicates cost the same), so halve it for each failed attempt at the queue's head.
+        var limit = Math.Max(1, max >> (int)Math.Min(rows.First(x => x.Peer == peer).Attempts, 16));
         foreach (var r in rows.Where(x => x.Peer == peer))
         {
-            if (batch.Count == max || !Eligible(r)) break;
+            if (batch.Count == limit || !Eligible(r)) break;
             var leased = r;
             leased.InFlightUntil = new Timestamp(now + IdcLeaseUs);
             tx.Db.IdcOutbox.Id.Update(leased);

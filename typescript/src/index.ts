@@ -351,9 +351,14 @@ function claimBatch(ctx: IdcCtx, max: number): Claimed[] {
     }
   }
   if (peer === undefined) return [];
+  const queue = rows.filter((x) => x.peer === peer);
+  // Each message is its own transaction on the peer, and since 2.13 each one waits for durability,
+  // so on a slow disk a full batch can outlast the HTTP timeout. Retrying it whole would too
+  // (duplicates cost the same), so halve it for each failed attempt at the queue's head.
+  const limit = Math.max(1, max >> Math.min(queue[0].attempts, 16));
   const batch: Claimed[] = [];
-  for (const r of rows.filter((x) => x.peer === peer)) {
-    if (batch.length === max || !eligible(r)) break;
+  for (const r of queue) {
+    if (batch.length === limit || !eligible(r)) break;
     ctx.db.outbox.id.update({ ...r, inFlightUntil: new Timestamp(now + LEASE_US) });
     batch.push({ row: r, msgId: msgId(ctx, r.id), sentAtUs: now });
   }
