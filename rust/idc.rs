@@ -437,6 +437,14 @@ fn claim_batch(ctx: &ReducerContext, max: usize) -> Vec<Claimed> {
         }
     }
     let Some(peer) = peer else { return Vec::new() };
+    // Each message is its own transaction on the peer, and since 2.13 each one waits for
+    // durability, so on a slow disk a full batch can outlast HTTP_TIMEOUT. Retrying it whole would
+    // too (duplicates cost the same), so halve it for each failed attempt at the queue's head.
+    let head_attempts = rows
+        .iter()
+        .find(|r| r.peer == peer)
+        .map_or(0, |r| r.attempts);
+    let max = (max >> head_attempts.min(16)).max(1);
     let mut batch = Vec::new();
     for row in rows.into_iter().filter(|r| r.peer == peer) {
         if batch.len() == max || !eligible(&row) {

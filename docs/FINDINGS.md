@@ -175,6 +175,17 @@ pays both waits).
 | 300 orders at ~280/s, reducer | 47 orders/s sustained (one `/call` per message) |
 | Synchronous RPC (`quote`) | ~15 ms |
 
+## Durability waits make a batch's size matter (2.13 and later)
+
+Procedures and HTTP handlers run with confirmed reads, so each `with_tx` waits until its transaction is on disk. The
+inbox gives every message its own transaction, so a batch costs one disk flush per message. With fsync delayed 200 ms,
+64 messages take about 13 s, longer than the sender's 10 s HTTP timeout. A retry costs the same, because duplicates
+write a log row, so the batch timed out forever. The slow-disk crash test caught it: handoffs stuck, no character live
+twice.
+
+The sender now halves the batch for each failed attempt on the message at the head of the queue, so a batch that's too
+big shrinks until it fits. Delivery on a healthy disk is unchanged.
+
 ## What native IDC could make easier
 
 These are the bits the workaround has to build by hand:
