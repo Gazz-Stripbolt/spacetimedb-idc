@@ -319,6 +319,21 @@ public static partial class Module
         }
     }
 
+    /// <summary>
+    /// Keep a later flush on the books while anything is queued. A flush job is deleted before the
+    /// flush runs, so a crash part-way through leaves leased messages with nothing to pick them up.
+    /// This is committed with the lease, so the retry can't be lost without the lease being lost too.
+    /// </summary>
+    static void IdcScheduleBackstop(IdcTx tx)
+    {
+        var now = tx.Timestamp.MicrosecondsSinceUnixEpoch;
+        foreach (var j in tx.Db.IdcFlushJob.Iter())
+        {
+            if (j.ScheduledAt is ScheduleAt.Time(var t) && t.MicrosecondsSinceUnixEpoch >= now + IdcLeaseUs / 2) return;
+        }
+        tx.Db.IdcFlushJob.Insert(new IdcFlushJob { ScheduledAt = new ScheduleAt.Time(new Timestamp(now + IdcLeaseUs)) });
+    }
+
     static void IdcScheduleFlush(IdcTx tx, Timestamp at)
     {
         foreach (var j in tx.Db.IdcFlushJob.Iter())
@@ -339,6 +354,7 @@ public static partial class Module
         var id = IdcMsgId(tx, row.Id);
         IdcWriteLog(tx, "out", peer, kind, IdcEnv.IDC_TRANSPORT, id, "queued");
         IdcScheduleFlush(tx, tx.Timestamp);
+        IdcScheduleBackstop(tx);
         return id;
     }
 
@@ -383,10 +399,15 @@ public static partial class Module
     [SpacetimeDB.Procedure]
     public static void IdcFlush(ProcedureContext ctx, IdcFlushJob job)
     {
-        var max = ctx.WithTx(_ => IdcEnv.IDC_TRANSPORT == "reducer" ? 1 : IdcBatch);
         for (var i = 0; i < 200; i++)
         {
-            var batch = ctx.WithTx(tx => IdcClaimBatch(new IdcTx(tx.Db, tx.Timestamp), max));
+            var batch = ctx.WithTx(tx =>
+            {
+                var idc = new IdcTx(tx.Db, tx.Timestamp);
+                var max = IdcEnv.IDC_TRANSPORT == "reducer" ? 1 : IdcBatch;
+                if (tx.Db.IdcOutbox.Iter().Any(r => !r.Dead)) IdcScheduleBackstop(idc);
+                return IdcClaimBatch(idc, max);
+            });
             if (batch.Count == 0) break;
             var results = IdcDeliverDurably(ctx, batch);
             ctx.WithTx(tx =>

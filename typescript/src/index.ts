@@ -308,6 +308,19 @@ function scheduleFlush(ctx: IdcCtx, atUs: bigint): void {
   ctx.db.flushJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.time(atUs) });
 }
 
+/**
+ * Keep a later flush on the books while anything is queued. A flush job is deleted before the flush
+ * runs, so a crash part-way through leaves leased messages with nothing to pick them up. This is
+ * committed with the lease, so the retry can't be lost without the lease being lost too.
+ */
+function scheduleBackstop(ctx: IdcCtx): void {
+  const now = ctx.timestamp.microsSinceUnixEpoch;
+  for (const j of ctx.db.flushJob.iter()) {
+    if (j.scheduledAt.tag === 'Time' && j.scheduledAt.value.microsSinceUnixEpoch >= now + LEASE_US / 2n) return;
+  }
+  ctx.db.flushJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.time(now + LEASE_US) });
+}
+
 /** Queue `payload` for `peer` in the current transaction. Delivery starts as soon as it commits. */
 export function send(ctx: IdcCtx, peer: string, kind: string, payload: unknown): string {
   const row = ctx.db.outbox.insert({
@@ -325,6 +338,7 @@ export function send(ctx: IdcCtx, peer: string, kind: string, payload: unknown):
   const id = msgId(ctx, row.id);
   writeLog(ctx, { direction: 'out', peer, kind, transport: getConfig(ctx).transport, msgId: id, event: 'queued' });
   scheduleFlush(ctx, ctx.timestamp.microsSinceUnixEpoch);
+  scheduleBackstop(ctx);
   return id;
 }
 
@@ -369,9 +383,16 @@ type Delivery = { ok: true; detail: string } | { ok: false; dead: boolean; detai
 
 /** Scheduled procedure: deliver everything that's due, then reschedule for the next retry. */
 export const flush = spacetimedb.procedure({ onSchedule: flushJob }, { arg: flushJob.rowType }, t.unit(), (ctx) => {
-  const max = ctx.withTx((tx) => (getConfig(tx).transport === 'reducer' ? 1 : BATCH));
   for (let i = 0; i < 200; i++) {
-    const batch = ctx.withTx((tx) => claimBatch(tx, max));
+    const batch = ctx.withTx((tx) => {
+      const max = getConfig(tx).transport === 'reducer' ? 1 : BATCH;
+      for (const r of tx.db.outbox.iter()) {
+        if (r.dead) continue;
+        scheduleBackstop(tx);
+        break;
+      }
+      return claimBatch(tx, max);
+    });
     if (batch.length === 0) break;
     const results = deliverDurably(ctx, batch);
     ctx.withTx((tx) => batch.forEach((c, j) => finish(tx, c, results[j])));

@@ -186,6 +186,16 @@ twice.
 The sender now halves the batch for each failed attempt on the message at the head of the queue, so a batch that's too
 big shrinks until it fits. Delivery on a healthy disk is unchanged.
 
+## A crash can take the flush with it
+
+A one-shot flush job is deleted before the flush runs. If the server dies after a flush has leased a batch, the lease
+expires but nothing is scheduled to retry it, and the messages wait for the next `send`. The crash test caught this:
+rows leased, lease expired, no flush job, and everything moving again only when new traffic arrived.
+
+So a queued message now always has a later flush committed with it: `send` and the first transaction of each flush add
+a backstop job at the end of the lease. The chain ends by itself once the outbox is empty, so an idle database still
+does nothing.
+
 ## What native IDC could make easier
 
 These are the bits the workaround has to build by hand:

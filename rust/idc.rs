@@ -367,6 +367,7 @@ pub fn send(ctx: &ReducerContext, peer: &str, kind: &str, payload: Value) -> Str
         0,
     );
     schedule_flush(ctx, ctx.timestamp);
+    schedule_backstop(ctx);
     msg_id
 }
 
@@ -396,6 +397,24 @@ fn schedule_flush(ctx: &ReducerContext, at: Timestamp) {
         ctx.db.idc_flush_job().insert(IdcFlushJob {
             scheduled_id: 0,
             scheduled_at: ScheduleAt::Time(at),
+        });
+    }
+}
+
+/// Keep a later flush on the books while anything is queued. A flush job is deleted before the
+/// flush runs, so a crash part-way through leaves leased messages with nothing to pick them up.
+/// This is committed with the lease, so the retry can't be lost without the lease being lost too.
+fn schedule_backstop(ctx: &ReducerContext) {
+    let later = ctx.timestamp + LEASE / 2;
+    let covered = ctx
+        .db
+        .idc_flush_job()
+        .iter()
+        .any(|j| matches!(j.scheduled_at, ScheduleAt::Time(t) if t >= later));
+    if !covered {
+        ctx.db.idc_flush_job().insert(IdcFlushJob {
+            scheduled_id: 0,
+            scheduled_at: ScheduleAt::Time(ctx.timestamp + LEASE),
         });
     }
 }
@@ -471,13 +490,18 @@ enum Delivery {
 /// Scheduled procedure: deliver everything that's due, then reschedule for the next retry.
 #[spacetimedb::procedure]
 pub fn idc_flush(ctx: &mut ProcedureContext, _job: IdcFlushJob) {
-    let max = if ctx.with_tx(|tx| tx.env.IDC_TRANSPORT()) == "reducer" {
-        1
-    } else {
-        BATCH
-    };
     for _ in 0..200 {
-        let batch = ctx.with_tx(|tx| claim_batch(tx, max));
+        let batch = ctx.with_tx(|tx| {
+            let max = if tx.env.IDC_TRANSPORT() == "reducer" {
+                1
+            } else {
+                BATCH
+            };
+            if tx.db.idc_outbox().iter().any(|r| !r.dead) {
+                schedule_backstop(tx);
+            }
+            claim_batch(tx, max)
+        });
         if batch.is_empty() {
             break;
         }
